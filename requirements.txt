@@ -1,0 +1,4 @@
+crontab
+beautifulsoup4
+logfire
+pydantic
