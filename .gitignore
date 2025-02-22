@@ -61,6 +61,30 @@ local_settings.py
 db.sqlite3
 db.sqlite3-journal
 
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+# MySQL
+*.sql
+*.sql.gz
+*.dump
+*.psql
+*.backup
+*.bak
+*.dump
+*.mongodb
+*.mongodump
+*.rdb
+*.aof
+*.mdb  # Microsoft Access
+*.accdb # Microsoft Access
+*.frm  # MySQL table definition
+*.myd  # MySQL data
+*.myi  # MySQL index
+*.ibd  # InnoDB data
+*.dmp  # Oracle dump
+
 # Flask stuff:
 instance/
 .webassets-cache
