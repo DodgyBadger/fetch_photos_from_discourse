@@ -1,4 +1,4 @@
-crontab
+python-crontab
 beautifulsoup4
 logfire
 pydantic

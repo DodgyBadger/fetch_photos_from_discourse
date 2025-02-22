@@ -29,24 +29,3 @@ class Image(BaseModel):
     hash: str
     filename: Optional[str] = None
     downloaded_at: Optional[datetime] = None
-
-
-# class DiscourseConfig(BaseModel):
-#     base_url: HttpUrl
-#     api_key: str
-#     api_username: str
-#     tag: str
-
-# class PhotoFrameConfig(BaseModel):
-#     image_dir: DirectoryPath
-#     poll_interval: int  # seconds
-#     image_limit: int
-
-
-
-
-# # Could also add if needed:
-# class ProcessedTopic(BaseModel):
-#     topic_id: int
-#     last_processed: datetime
-#     images: List[Image]
