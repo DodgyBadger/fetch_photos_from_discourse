@@ -1,5 +1,6 @@
 import os
 import sys
+import traceback
 import requests
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
@@ -8,9 +9,11 @@ from typing import List
 from datetime import datetime, timezone
 from models import TagResponse, TopicSummary, Image
 import db
+import logging
 from logging_config import setup_logging
 
-logger = setup_logging()
+setup_logging()
+logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -222,25 +225,6 @@ def download_images(images: List[dict]):
         logger.warning("Failed to download %d images", len(failed_downloads))
 
 
-def notify_admin_of_failure(error_message: str, baseURL, recipient):
-    """Send a private message to admin via Discourse API"""
-   
-    try:
-        url = f"{baseURL}/posts.json"
-        data = {
-            'title': 'PhotoFrame Error Report',
-            'raw': f"System encountered a critical error:\n\n```\n{error_message}\n```",
-            'target_recipients': recipient,
-            'archetype': 'private_message'
-        }
-        response = requests.post(url, headers=headers, json=data)
-        response.raise_for_status()
-        logger.info("Successfully sent error notification to admin")
-    
-    except Exception as e:
-        logger.error(f"Failed to send admin notification: {e}")
-
-
 def main():
     try:
         logger.info("Starting photo frame image fetch")
@@ -261,17 +245,14 @@ def main():
         
     except SystemError as e:
         logger.critical("System error: %s", e)
-        # notify_admin_of_failure(error_msg,base_url,discourse_admin)
         sys.exit(1)
         
     except requests.exceptions.RequestException as e:
         logger.error("API/Network error: %s", e)
-        # notify_admin_of_failure(error_msg,base_url,discourse_admin)
         sys.exit(1)
         
     except Exception as e:
         logger.critical("Unexpected error: %s\n%s", e, traceback.format_exc())
-        # notify_admin_of_failure(error_msg,base_url,discourse_admin)
         sys.exit(1)
 
 

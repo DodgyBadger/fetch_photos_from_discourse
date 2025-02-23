@@ -3,14 +3,18 @@ import sys
 import subprocess
 import shutil
 from typing import Optional
+from pathlib import Path
 from enum import Enum
 from datetime import datetime
 from crontab import CronTab
 from dotenv import load_dotenv
 from db import init_db
+import logging
 from logging_config import setup_logging
 
-logger = setup_logging()
+setup_logging()
+logger = logging.getLogger(__name__)
+
 
 class DisplayServer(Enum):
     X11 = 'x11'
@@ -63,7 +67,7 @@ class SystemConfig:
         
         if display_server == DisplayServer.WAYLAND.value:
             return """Environment=WAYLAND_DISPLAY=wayland-0
-Environment=XDG_RUNTIME_DIR=/run/user/%U"""
+            Environment=XDG_RUNTIME_DIR=/run/user/%U"""
         return "Environment=DISPLAY=:0"
 
     def detect_display_server(self) -> str:
@@ -206,6 +210,24 @@ def create_directories(config: SystemConfig):
         raise
 
 
+def install_requirements():
+    """Install required Python packages from requirements.txt"""
+    BASE_DIR = Path(__file__).parent
+    try:
+        requirements_path = BASE_DIR / 'requirements.txt'
+        if not requirements_path.exists():
+            logger.error("requirements.txt not found in %s", BASE_DIR)
+            raise FileNotFoundError("requirements.txt not found")
+            
+        logger.info("Installing required packages from requirements.txt")
+        subprocess.run([sys.executable, '-m', 'pip', 'install', '-r', str(requirements_path)], check=True)
+        logger.info("Successfully installed required packages")
+        
+    except subprocess.CalledProcessError as e:
+        logger.error("Failed to install requirements: %s", e)
+        raise
+
+
 def main():
     """Main setup function for PhotoFrame"""
     try:
@@ -214,7 +236,11 @@ def main():
         # Load environment variables
         load_dotenv()
         logger.info("Environment variables loaded")
-        
+
+        # Install requirements first
+        logger.info("Checking requirements")
+        install_requirements()
+
         # Initialize configuration
         config = SystemConfig()
         

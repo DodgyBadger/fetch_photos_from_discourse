@@ -1,18 +1,20 @@
 
 import sqlite3
-from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional
-from logging_config import setup_logging
+import logging
+from pathlib import Path
 
-logger = setup_logging()
 
-# Get the directory where install.py is located
+logger = logging.getLogger(__name__)
+
+# Set the DB location
 BASE_DIR = Path(__file__).parent
 db_path = BASE_DIR / 'photoframe.db'
 
 def init_db():
     """Initialize the SQLite database with our schema"""
+
     try:
         logger.info("Initializing database at %s", db_path)
         conn = sqlite3.connect(db_path)
