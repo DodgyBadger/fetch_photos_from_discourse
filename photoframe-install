@@ -291,18 +291,71 @@ stop() {
 status() {
   echo -e "${GREEN}=== PhotoFrame Status ===${NC}"
   
-  # Check Feh service status
-  if command -v systemctl &> /dev/null; then
-    echo -e "${YELLOW}Feh Service:${NC}"
-    systemctl status "$APP_NAME@$USER" --no-pager || true
+  # Check system environment
+  echo -e "${YELLOW}System Environment:${NC}"
+  echo -e "User: $(whoami)"
+  echo -e "DISPLAY: $DISPLAY"
+  if [ -n "$WAYLAND_DISPLAY" ]; then
+    echo -e "WAYLAND_DISPLAY: $WAYLAND_DISPLAY"
   fi
   
-  # Check container status
-  echo -e "${YELLOW}Container Status:${NC}"
-  docker ps -a --filter "name=$APP_NAME" || true
+  # Check Feh installation and version
+  echo -e "\n${YELLOW}Feh Status:${NC}"
+  if command -v feh &> /dev/null; then
+    echo -e "Feh installed: $(which feh)"
+    echo -e "Feh version: $(feh --version | head -n 1)"
+  else
+    echo -e "${RED}Feh not installed${NC}"
+  fi
   
-  echo -e "${YELLOW}Log Preview (last 10 lines):${NC}"
-  tail -n 10 "$SCRIPT_DIR/logs/photoframe.log" 2>/dev/null || echo "No logs found"
+  # Check Feh service status
+  if command -v systemctl &> /dev/null; then
+    echo -e "\n${YELLOW}Feh Service Status:${NC}"
+    systemctl status "$APP_NAME@$USER" --no-pager || true
+    
+    # Check Feh service logs
+    echo -e "\n${YELLOW}Feh Service Logs (last 10 lines):${NC}"
+    journalctl -u "$APP_NAME@$USER" --no-pager -n 10 || echo "No service logs found"
+  fi
+  
+  # Check config directories and files
+  echo -e "\n${YELLOW}Config Status:${NC}"
+  echo -e "Config directory: $(ls -la $CONFIG_DIR 2>/dev/null || echo 'Not found')"
+  echo -e "Images directory: $(ls -la $IMAGE_DIR 2>/dev/null || echo 'Not found')"
+  echo -e "Image count: $(find $IMAGE_DIR -type f -name "*.jpg" -o -name "*.png" -o -name "*.gif" 2>/dev/null | wc -l)"
+  
+  # Check cron jobs
+  echo -e "\n${YELLOW}Cron Job Status:${NC}"
+  if command -v crontab &> /dev/null; then
+    cron_jobs=$(crontab -l 2>/dev/null | grep -i "photoframe\|python" || echo "No cron jobs found for PhotoFrame")
+    echo -e "$cron_jobs"
+  else
+    echo -e "Crontab command not available"
+  fi
+  
+  # Check Docker status
+  if command -v docker &> /dev/null; then
+    echo -e "\n${YELLOW}Docker Container Status:${NC}"
+    docker ps -a --filter "name=$APP_NAME" || echo "Docker command failed"
+    
+    echo -e "\n${YELLOW}Docker Container Logs (last 10 lines):${NC}"
+    docker logs "$APP_NAME" --tail 10 2>/dev/null || echo "No container logs found"
+  fi
+  
+  # Check application logs
+  echo -e "\n${YELLOW}Application Logs (last 10 lines):${NC}"
+  tail -n 10 "$SCRIPT_DIR/logs/photoframe.log" 2>/dev/null || echo "No application logs found"
+  
+  # Check for common issues
+  echo -e "\n${YELLOW}Potential Issues:${NC}"
+  if [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ]; then
+    echo -e "${RED}WARNING:${NC} No display environment detected (DISPLAY or WAYLAND_DISPLAY). Feh requires a display to run."
+    echo -e "  → Connect a physical display or set up Xvfb (virtual framebuffer)"
+  fi
+  
+  if [ "$(find $IMAGE_DIR -type f -name "*.jpg" -o -name "*.png" -o -name "*.gif" 2>/dev/null | wc -l)" -eq 0 ]; then
+    echo -e "${RED}WARNING:${NC} No images found in $IMAGE_DIR"
+  fi
 }
 
 # Main script logic

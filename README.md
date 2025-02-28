@@ -26,18 +26,20 @@ The new installation method uses Docker to isolate Python dependencies while kee
    chmod +x photoframe-install
    ```
 
-3. Run the installation:
+3. Run the installation with sudo:
    ```
-   ./photoframe-install install
+   sudo ./photoframe-install install
    ```
 
 ### Commands
 
-- `./photoframe-install install` - Install and start PhotoFrame
-- `./photoframe-install start` - Start services
-- `./photoframe-install stop` - Stop services
-- `./photoframe-install update` - Update to latest version
-- `./photoframe-install status` - Check status
+All commands should be run with sudo to ensure proper permissions:
+
+- `sudo ./photoframe-install install` - Install and start PhotoFrame
+- `sudo ./photoframe-install start` - Start services
+- `sudo ./photoframe-install stop` - Stop services
+- `sudo ./photoframe-install update` - Update to latest version
+- `sudo ./photoframe-install status` - Check status
 
 ### Configuration
 
@@ -98,6 +100,8 @@ You can also use Docker Compose directly:
 
 - **Feh not displaying images**: Check if your display environment is correctly detected. Edit the systemd service file or configure DISPLAY_SERVER in your .env file.
 
-- **Container not starting**: Check the logs with `docker logs photoframe` or `./photoframe-install status`.
+- **Container not starting**: Check the logs with `docker logs photoframe` or `sudo ./photoframe-install status`.
 
-- **Missing images**: Ensure the `./images` directory exists and has appropriate permissions.
+- **Missing images**: Ensure the `./images` directory exists and has appropriate permissions. If you encounter permission errors during installation, make sure you're running the commands with sudo.
+
+- **Permission denied errors**: Make sure you're running all commands with sudo (e.g., `sudo ./photoframe-install install`). The installation script needs to create directories and install system services.
