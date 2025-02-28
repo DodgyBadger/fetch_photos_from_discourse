@@ -9,13 +9,20 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 # Set the DB location
-BASE_DIR = Path(__file__).parent
-db_path = BASE_DIR / 'photoframe.db'
+BASE_DIR = Path(__file__).parent.parent  # Go up one level to the app root
+data_dir = BASE_DIR / 'data'
+db_path = data_dir / 'photoframe.db'
+
+# Import needed for remove_oldest_images function
+import os
 
 def init_db():
     """Initialize the SQLite database with our schema"""
 
     try:
+        # Ensure data directory exists
+        data_dir.mkdir(exist_ok=True)
+        
         logger.info("Initializing database at %s", db_path)
         conn = sqlite3.connect(db_path)
         c = conn.cursor()
