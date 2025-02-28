@@ -23,23 +23,23 @@ The new installation method uses Docker to isolate Python dependencies while kee
 
 2. Make the installation script executable:
    ```
-   chmod +x photoframe-install
+   chmod +x photoframe
    ```
 
 3. Run the installation with sudo:
    ```
-   sudo ./photoframe-install install
+   sudo ./photoframe install
    ```
 
 ### Commands
 
 All commands should be run with sudo to ensure proper permissions:
 
-- `sudo ./photoframe-install install` - Install and start PhotoFrame
-- `sudo ./photoframe-install start` - Start services
-- `sudo ./photoframe-install stop` - Stop services
-- `sudo ./photoframe-install update` - Update to latest version
-- `sudo ./photoframe-install status` - Check status
+- `sudo ./photoframe install` - Install and start PhotoFrame
+- `sudo ./photoframe start` - Start services
+- `sudo ./photoframe stop` - Stop services
+- `sudo ./photoframe update` - Update to latest version
+- `sudo ./photoframe status` - Check status
 
 ### Configuration
 
@@ -108,12 +108,12 @@ You can also use Docker Compose directly:
 
 - **Feh not displaying images**: Check if your display environment is correctly detected. Edit the systemd service file or configure DISPLAY_SERVER in your .env file.
 
-- **Container not starting**: Check the logs with `docker logs photoframe` or `sudo ./photoframe-install status`.
+- **Container not starting**: Check the logs with `docker logs photoframe` or `sudo ./photoframe status`.
 
 - **Missing images**: Ensure the `./images` directory exists and has appropriate permissions. If you encounter permission errors during installation, make sure you're running the commands with sudo.
 
-- **Permission denied errors**: Make sure you're running all commands with sudo (e.g., `sudo ./photoframe-install install`). The installation script needs to create directories and install system services.
+- **Permission denied errors**: Make sure you're running all commands with sudo (e.g., `sudo ./photoframe install`). The installation script needs to create directories and install system services.
 
 - **Display environment errors**: If you see errors like `feh ERROR: Can't open X display`, make sure you have a physical display connected or set up a virtual framebuffer (Xvfb).
 
-- **No images displayed**: During installation, a default image is used to ensure Feh can start properly. If you only see this default image and no actual photos, check the logs to verify if image downloading is working correctly: `sudo ./photoframe-install status`. You can customize this default image by adding a file named `default.jpg` or `default.png` to your PhotoFrame directory before installation.
+- **No images displayed**: During installation, a default image is used to ensure Feh can start properly. If you only see this default image and no actual photos, check the logs to verify if image downloading is working correctly: `sudo ./photoframe status`. You can customize this default image by adding a file named `default.jpg` or `default.png` to your PhotoFrame directory before installation.
