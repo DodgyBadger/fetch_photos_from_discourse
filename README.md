@@ -2,6 +2,25 @@
 
 A digital photo frame application that displays images from Discourse.
 
+## Project Structure
+
+```
+photoframe/
+├── photoframe         # Main installation/management script
+├── .env               # Main configuration file
+├── requirements.txt   # Python dependencies
+├── docker-compose.yml # Docker Compose configuration
+├── config/            # Configuration directory
+├── data/              # Application data
+│   ├── images/        # Downloaded images
+│   └── photoframe.db  # Application database
+├── docker/            # Docker related files
+│   ├── Dockerfile     # Container definition
+│   └── entrypoint.sh  # Container startup script
+├── logs/              # Log files
+└── src/               # Python source code
+```
+
 ## New Installation Method (Docker)
 
 The new installation method uses Docker to isolate Python dependencies while keeping the display manager (Feh) on the host system.
@@ -43,9 +62,15 @@ All commands should be run with sudo to ensure proper permissions:
 
 ### Configuration
 
-Configuration is stored in `~/.config/photoframe/.env`. You can edit this file to change settings.
+All configuration and data are now self-contained within the PhotoFrame directory:
 
-Images are stored in `./images` relative to where you installed PhotoFrame. This directory is automatically created during installation.
+- Configuration: `./config/`
+- Data:
+  - Images: `./data/images/`
+  - Database: `./data/photoframe.db`
+- Logs: `./logs/`
+
+The main configuration file is at `./config/.env`, but you can also edit `.env` in the root directory. When installing, any existing `.env` file in the root will be used.
 
 #### Custom Default Image
 

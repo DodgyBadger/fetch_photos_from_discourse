@@ -7,8 +7,9 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_NAME="photoframe"
-CONFIG_DIR="$HOME/.config/$APP_NAME"
-IMAGE_DIR="$SCRIPT_DIR/images"
+CONFIG_DIR="$SCRIPT_DIR/config"
+IMAGE_DIR="$SCRIPT_DIR/data/images"
+LOGS_DIR="$SCRIPT_DIR/logs"
 DOCKER_IMAGE="photoframe:latest"
 ENV_FILE="$CONFIG_DIR/.env"
 
@@ -56,10 +57,25 @@ check_feh() {
 
 # Create configuration directory and default environment file
 setup_config() {
+  # Create all required directories
   mkdir -p "$CONFIG_DIR"
   mkdir -p "$IMAGE_DIR"
+  mkdir -p "$LOGS_DIR"
   
-  if [ ! -f "$ENV_FILE" ]; then
+  # Handle environment file configuration
+  # First check if there's a .env file in the script root
+  if [ -f "$SCRIPT_DIR/.env" ]; then
+    # Use .env from the root directory
+    cp "$SCRIPT_DIR/.env" "$ENV_FILE"
+    echo -e "${GREEN}Using .env from application root${NC}"
+  # Next check if there's a .env-example file
+  elif [ -f "$SCRIPT_DIR/.env-example" ]; then
+    # Copy from example to both locations (for legacy compatibility)
+    cp "$SCRIPT_DIR/.env-example" "$SCRIPT_DIR/.env"
+    cp "$SCRIPT_DIR/.env-example" "$ENV_FILE"
+    echo -e "${GREEN}Created .env from .env-example${NC}"
+  # Finally, create a default if nothing exists
+  elif [ ! -f "$ENV_FILE" ]; then
     cat > "$ENV_FILE" <<EOF
 # PhotoFrame Configuration
 SLIDESHOW_DELAY=30
@@ -69,13 +85,9 @@ FEH_ADDITIONAL_OPTIONS=
 FETCH_INTERVAL=15
 TZ=$(cat /etc/timezone 2>/dev/null || echo "UTC")
 EOF
-    echo -e "${GREEN}Created default configuration at $ENV_FILE${NC}"
-  fi
-  
-  # Copy example .env file if it exists
-  if [ -f "$SCRIPT_DIR/.env-example" ] && [ ! -f "$SCRIPT_DIR/.env" ]; then
-    cp "$SCRIPT_DIR/.env-example" "$SCRIPT_DIR/.env"
-    echo -e "${GREEN}Copied .env-example to .env${NC}"
+    # Also create a copy in the root for visibility
+    cp "$ENV_FILE" "$SCRIPT_DIR/.env"
+    echo -e "${GREEN}Created default configuration at $ENV_FILE and $SCRIPT_DIR/.env${NC}"
   fi
   
   # Check for custom default image or create a fallback
@@ -198,61 +210,51 @@ EOF
 build_docker_image() {
   echo "Building Docker image..."
   
-  # Create a temporary Dockerfile
-  DOCKERFILE="$SCRIPT_DIR/Dockerfile.tmp"
-  cat > "$DOCKERFILE" <<EOF
-FROM python:3.9-slim
-
-WORKDIR /app
-
-# Copy application files
-COPY . /app/
-
-# Install requirements
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Set up cron for the photo fetch job
-RUN apt-get update && apt-get install -y cron && apt-get clean
-
-# Create entrypoint script that sets up cron job at runtime (not build time)
-# and runs the photo fetching script immediately to avoid empty display
-RUN echo '#!/bin/bash' > /entrypoint.sh && \
-    echo 'set -e' >> /entrypoint.sh && \
-    echo '' >> /entrypoint.sh && \
-    echo '# Create cron job with current FETCH_INTERVAL' >> /entrypoint.sh && \
-    echo 'echo "*/${FETCH_INTERVAL:-15} * * * * cd /app && python /app/photoframe.py >> /app/logs/photoframe.log 2>&1" > /etc/cron.d/photoframe' >> /entrypoint.sh && \
-    echo 'chmod 0644 /etc/cron.d/photoframe' >> /entrypoint.sh && \
-    echo '' >> /entrypoint.sh && \
-    echo '# Initialize database' >> /entrypoint.sh && \
-    echo 'python /app/db.py' >> /entrypoint.sh && \
-    echo '' >> /entrypoint.sh && \
-    echo '# Start cron service' >> /entrypoint.sh && \
-    echo 'cron' >> /entrypoint.sh && \
-    echo '' >> /entrypoint.sh && \
-    echo '# Run photoframe.py immediately to fetch images' >> /entrypoint.sh && \
-    echo 'echo "Running initial photo fetch..."' >> /entrypoint.sh && \
-    echo 'cd /app' >> /entrypoint.sh && \
-    echo 'if python /app/photoframe.py >> /app/logs/photoframe.log 2>&1; then' >> /entrypoint.sh && \
-    echo '  echo "✓ Initial photo fetch completed successfully."' >> /entrypoint.sh && \
-    echo 'else' >> /entrypoint.sh && \
-    echo '  echo "⚠️ Initial photo fetch encountered issues."' >> /entrypoint.sh && \
-    echo '  echo "Check logs for details. The fallback image will be used until photos are successfully downloaded."' >> /entrypoint.sh && \
-    echo 'fi' >> /entrypoint.sh && \
-    echo '' >> /entrypoint.sh && \
-    echo 'echo "PhotoFrame container running with fetch interval: ${FETCH_INTERVAL:-15} minutes"' >> /entrypoint.sh && \
-    echo 'tail -f /dev/null' >> /entrypoint.sh && \
-    chmod +x /entrypoint.sh
-
-VOLUME ["/app/logs", "/data"]
-
-ENTRYPOINT ["/entrypoint.sh"]
-EOF
-
-  # Build the Docker image
-  docker build -t "$DOCKER_IMAGE" -f "$DOCKERFILE" "$SCRIPT_DIR"
+  # Create a temporary entrypoint script to customize the image
+  ENTRYPOINT_SCRIPT="$SCRIPT_DIR/docker/entrypoint.sh"
   
-  # Remove temporary Dockerfile
-  rm "$DOCKERFILE"
+  # Create docker directory if it doesn't exist
+  mkdir -p "$SCRIPT_DIR/docker"
+  
+  # Create a dynamic entrypoint script
+  cat > "$ENTRYPOINT_SCRIPT" <<EOF
+#!/bin/bash
+set -e
+
+# Create cron job with current FETCH_INTERVAL
+echo "*/${FETCH_INTERVAL:-15} * * * * cd /app && python /app/photoframe.py >> /app/logs/photoframe.log 2>&1" > /etc/cron.d/photoframe
+chmod 0644 /etc/cron.d/photoframe
+
+# Initialize database
+python /app/db.py
+
+# Start cron service
+cron
+
+# Run photoframe.py immediately to fetch images
+echo "Running initial photo fetch..."
+cd /app
+if python /app/photoframe.py >> /app/logs/photoframe.log 2>&1; then
+  echo "✓ Initial photo fetch completed successfully."
+else
+  echo "⚠️ Initial photo fetch encountered issues."
+  echo "Check logs for details. The fallback image will be used until photos are successfully downloaded."
+fi
+
+echo "PhotoFrame container running with fetch interval: \${FETCH_INTERVAL:-15} minutes"
+tail -f /dev/null
+EOF
+  
+  # Make entrypoint script executable
+  chmod +x "$ENTRYPOINT_SCRIPT"
+  
+  # Update the Dockerfile's entrypoint
+  if grep -q "ENTRYPOINT \[" "$SCRIPT_DIR/docker/Dockerfile"; then
+    sed -i 's|ENTRYPOINT \[.*\]|ENTRYPOINT \["/app/entrypoint.sh"\]|' "$SCRIPT_DIR/docker/Dockerfile"
+  fi
+  
+  # Build the Docker image
+  docker build -t "$DOCKER_IMAGE" -f "$SCRIPT_DIR/docker/Dockerfile" "$SCRIPT_DIR"
   
   echo -e "${GREEN}Docker image built successfully.${NC}"
 }
@@ -262,19 +264,21 @@ start_container() {
   echo "Starting PhotoFrame container..."
   
   # Create necessary directories if they don't exist
-  mkdir -p "$SCRIPT_DIR/logs"
+  mkdir -p "$LOGS_DIR"
   mkdir -p "$IMAGE_DIR"
+  mkdir -p "$CONFIG_DIR"
   
   # Ensure database file is writable
-  touch "$SCRIPT_DIR/photoframe.db" 2>/dev/null || true
-  chmod 666 "$SCRIPT_DIR/photoframe.db" 2>/dev/null || true
+  DB_FILE="$SCRIPT_DIR/data/photoframe.db"
+  touch "$DB_FILE" 2>/dev/null || true
+  chmod 666 "$DB_FILE" 2>/dev/null || true
   
   # Run the container
   docker run -d \
     --name "$APP_NAME" \
     --restart unless-stopped \
-    -v "$SCRIPT_DIR/logs:/app/logs" \
-    -v "$SCRIPT_DIR/photoframe.db:/app/photoframe.db" \
+    -v "$LOGS_DIR:/app/logs" \
+    -v "$DB_FILE:/app/photoframe.db" \
     -v "$IMAGE_DIR:/data/images" \
     --env-file "$ENV_FILE" \
     "$DOCKER_IMAGE"
@@ -381,6 +385,8 @@ status() {
   echo -e "\n${YELLOW}Config Status:${NC}"
   echo -e "Config directory: $(ls -la $CONFIG_DIR 2>/dev/null || echo 'Not found')"
   echo -e "Images directory: $(ls -la $IMAGE_DIR 2>/dev/null || echo 'Not found')"
+  echo -e "Logs directory: $(ls -la $LOGS_DIR 2>/dev/null || echo 'Not found')"
+  echo -e "Database file: $(ls -la $CONFIG_DIR/photoframe.db 2>/dev/null || echo 'Not found')"
   echo -e "Image count: $(find $IMAGE_DIR -type f -name "*.jpg" -o -name "*.png" -o -name "*.gif" 2>/dev/null | wc -l)"
   
   # Check cron jobs in the container

@@ -2,13 +2,15 @@ version: '3'
 
 services:
   photoframe:
-    build: .
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
     container_name: photoframe
     restart: unless-stopped
     volumes:
       - ./logs:/app/logs
-      - ./photoframe.db:/app/photoframe.db
-      - ./images:/data/images
+      - ./data/photoframe.db:/app/photoframe.db
+      - ./data/images:/data/images
     env_file:
       - .env
     environment:
