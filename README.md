@@ -47,6 +47,14 @@ Configuration is stored in `~/.config/photoframe/.env`. You can edit this file t
 
 Images are stored in `./images` relative to where you installed PhotoFrame. This directory is automatically created during installation.
 
+#### Custom Default Image
+
+You can provide your own default image (logo, welcome screen, etc.):
+1. Add a file named `default.jpg` or `default.png` to the PhotoFrame directory
+2. Run the installation script
+
+The default image will be displayed when Feh starts up, even if no other images have been downloaded yet. This ensures your display always shows something meaningful instead of an error.
+
 ## Alternative Installation Methods
 
 ### Manual Install (Development)
@@ -105,3 +113,7 @@ You can also use Docker Compose directly:
 - **Missing images**: Ensure the `./images` directory exists and has appropriate permissions. If you encounter permission errors during installation, make sure you're running the commands with sudo.
 
 - **Permission denied errors**: Make sure you're running all commands with sudo (e.g., `sudo ./photoframe-install install`). The installation script needs to create directories and install system services.
+
+- **Display environment errors**: If you see errors like `feh ERROR: Can't open X display`, make sure you have a physical display connected or set up a virtual framebuffer (Xvfb).
+
+- **No images displayed**: During installation, a default image is used to ensure Feh can start properly. If you only see this default image and no actual photos, check the logs to verify if image downloading is working correctly: `sudo ./photoframe-install status`. You can customize this default image by adding a file named `default.jpg` or `default.png` to your PhotoFrame directory before installation.

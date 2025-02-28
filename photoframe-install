@@ -77,6 +77,47 @@ EOF
     cp "$SCRIPT_DIR/.env-example" "$SCRIPT_DIR/.env"
     echo -e "${GREEN}Copied .env-example to .env${NC}"
   fi
+  
+  # Check for custom default image or create a fallback
+  DEFAULT_IMAGE="$SCRIPT_DIR/default.jpg"
+  FALLBACK_IMAGE="$IMAGE_DIR/default-image.png"
+  
+  # Look for any user-provided default image
+  if [ -f "$DEFAULT_IMAGE" ]; then
+    # User provided a default image
+    echo -e "${GREEN}Found custom default image at $DEFAULT_IMAGE${NC}"
+    cp "$DEFAULT_IMAGE" "$FALLBACK_IMAGE"
+    echo -e "${GREEN}Copied custom default image to $FALLBACK_IMAGE${NC}"
+  elif [ -f "$IMAGE_DIR/default.jpg" ] || [ -f "$IMAGE_DIR/default.png" ]; then
+    # User already has a default image in the images directory
+    echo -e "${GREEN}Using existing default image in $IMAGE_DIR${NC}"
+  else
+    # No custom image found, create a simple fallback
+    echo -e "${YELLOW}No custom default image found. Creating minimal fallback image...${NC}"
+    # Base64 encoded 1x1 transparent PNG
+    BASE64_PNG="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+    echo "$BASE64_PNG" | base64 -d > "$FALLBACK_IMAGE"
+    echo -e "${GREEN}Created fallback image at $FALLBACK_IMAGE${NC}"
+  fi
+  
+  # Add a readme text file explaining the default/fallback image
+  if [ ! -f "$IMAGE_DIR/README.txt" ]; then
+    cat > "$IMAGE_DIR/README.txt" <<EOF
+This directory contains images for your PhotoFrame.
+
+Custom Default Image:
+--------------------
+You can provide your own default image (logo, welcome screen, etc.) by:
+1. Adding a file named 'default.jpg' or 'default.png' to the application directory
+2. The next time you run the installer, it will use your image instead
+
+The default image ensures Feh can start properly even if no images 
+have been downloaded yet from your configured sources.
+
+Once your PhotoFrame downloads actual images, this default image will
+be shown along with your other photos in the slideshow.
+EOF
+  fi
 }
 
 # Detect display server (X11 or Wayland)
@@ -173,14 +214,32 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Set up cron for the photo fetch job
 RUN apt-get update && apt-get install -y cron && apt-get clean
 
-# Create cron job file
-RUN echo "*/\${FETCH_INTERVAL:-15} * * * * cd /app && python /app/photoframe.py >> /app/logs/photoframe.log 2>&1" > /etc/cron.d/photoframe && \
-    chmod 0644 /etc/cron.d/photoframe
-
-# Create entrypoint
+# Create entrypoint script that sets up cron job at runtime (not build time)
+# and runs the photo fetching script immediately to avoid empty display
 RUN echo '#!/bin/bash' > /entrypoint.sh && \
-    echo 'cron' >> /entrypoint.sh && \
+    echo 'set -e' >> /entrypoint.sh && \
+    echo '' >> /entrypoint.sh && \
+    echo '# Create cron job with current FETCH_INTERVAL' >> /entrypoint.sh && \
+    echo 'echo "*/${FETCH_INTERVAL:-15} * * * * cd /app && python /app/photoframe.py >> /app/logs/photoframe.log 2>&1" > /etc/cron.d/photoframe' >> /entrypoint.sh && \
+    echo 'chmod 0644 /etc/cron.d/photoframe' >> /entrypoint.sh && \
+    echo '' >> /entrypoint.sh && \
+    echo '# Initialize database' >> /entrypoint.sh && \
     echo 'python /app/db.py' >> /entrypoint.sh && \
+    echo '' >> /entrypoint.sh && \
+    echo '# Start cron service' >> /entrypoint.sh && \
+    echo 'cron' >> /entrypoint.sh && \
+    echo '' >> /entrypoint.sh && \
+    echo '# Run photoframe.py immediately to fetch images' >> /entrypoint.sh && \
+    echo 'echo "Running initial photo fetch..."' >> /entrypoint.sh && \
+    echo 'cd /app' >> /entrypoint.sh && \
+    echo 'if python /app/photoframe.py >> /app/logs/photoframe.log 2>&1; then' >> /entrypoint.sh && \
+    echo '  echo "✓ Initial photo fetch completed successfully."' >> /entrypoint.sh && \
+    echo 'else' >> /entrypoint.sh && \
+    echo '  echo "⚠️ Initial photo fetch encountered issues."' >> /entrypoint.sh && \
+    echo '  echo "Check logs for details. The fallback image will be used until photos are successfully downloaded."' >> /entrypoint.sh && \
+    echo 'fi' >> /entrypoint.sh && \
+    echo '' >> /entrypoint.sh && \
+    echo 'echo "PhotoFrame container running with fetch interval: ${FETCH_INTERVAL:-15} minutes"' >> /entrypoint.sh && \
     echo 'tail -f /dev/null' >> /entrypoint.sh && \
     chmod +x /entrypoint.sh
 
