@@ -324,13 +324,22 @@ status() {
   echo -e "Images directory: $(ls -la $IMAGE_DIR 2>/dev/null || echo 'Not found')"
   echo -e "Image count: $(find $IMAGE_DIR -type f -name "*.jpg" -o -name "*.png" -o -name "*.gif" 2>/dev/null | wc -l)"
   
-  # Check cron jobs
-  echo -e "\n${YELLOW}Cron Job Status:${NC}"
-  if command -v crontab &> /dev/null; then
-    cron_jobs=$(crontab -l 2>/dev/null | grep -i "photoframe\|python" || echo "No cron jobs found for PhotoFrame")
-    echo -e "$cron_jobs"
+  # Check cron jobs in the container
+  echo -e "\n${YELLOW}Cron Job Status (Container):${NC}"
+  if docker ps -q -f name="$APP_NAME" &>/dev/null; then
+    echo -e "Checking cron job in container..."
+    container_cron=$(docker exec "$APP_NAME" cat /etc/cron.d/photoframe 2>/dev/null || echo "Could not access cron file in container")
+    echo -e "$container_cron"
+    
+    # Check if cron is running in container
+    cron_running=$(docker exec "$APP_NAME" ps aux | grep cron | grep -v grep 2>/dev/null || echo "Cron process not found")
+    if [ -n "$cron_running" ]; then
+      echo -e "${GREEN}Cron service is running in container${NC}"
+    else
+      echo -e "${RED}WARNING: Cron service does not appear to be running in container${NC}"
+    fi
   else
-    echo -e "Crontab command not available"
+    echo -e "${YELLOW}Container not running - cannot check cron status${NC}"
   fi
   
   # Check Docker status
