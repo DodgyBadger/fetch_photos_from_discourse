@@ -222,7 +222,7 @@ build_docker_image() {
 set -e
 
 # Create cron job with current FETCH_INTERVAL
-echo "*/${FETCH_INTERVAL:-15} * * * * cd /app && python /app/photoframe.py >> /app/logs/photoframe.log 2>&1" > /etc/cron.d/photoframe
+echo "*/\${FETCH_INTERVAL:-60} * * * * cd /app && python /app/photoframe.py >> /app/logs/photoframe.log 2>&1" > /etc/cron.d/photoframe
 chmod 0644 /etc/cron.d/photoframe
 
 # Initialize database
@@ -241,7 +241,7 @@ else
   echo "Check logs for details. The fallback image will be used until photos are successfully downloaded."
 fi
 
-echo "PhotoFrame container running with fetch interval: \${FETCH_INTERVAL:-15} minutes"
+echo "PhotoFrame container running with fetch interval: \${FETCH_INTERVAL:-60} minutes"
 tail -f /dev/null
 EOF
   

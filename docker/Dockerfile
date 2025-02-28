@@ -31,4 +31,4 @@ VOLUME ["/app/logs", "/data"]
 ENV IMAGE_DIR=/data/images
 ENV PYTHONUNBUFFERED=1
 
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/app/entrypoint.sh"]
