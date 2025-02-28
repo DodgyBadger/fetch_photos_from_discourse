@@ -1,4 +1,5 @@
 python-crontab
 beautifulsoup4
-logfire
 pydantic
+python-dotenv
+requests
