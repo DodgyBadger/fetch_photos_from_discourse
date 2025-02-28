@@ -229,6 +229,10 @@ def main():
     try:
         logger.info("Starting photo frame image fetch")
         
+        # Ensure database is properly initialized before any operations
+        db.init_db()
+        logger.info("Database initialized")
+        
         tagged_topics = get_tagged_topics(base_url, tag_name)
         if not tagged_topics:
             logger.info("No new topics since last fetch")
