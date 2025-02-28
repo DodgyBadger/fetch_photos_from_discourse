@@ -62,14 +62,20 @@ setup_config() {
   if [ ! -f "$ENV_FILE" ]; then
     cat > "$ENV_FILE" <<EOF
 # PhotoFrame Configuration
-IMAGE_DIR=$IMAGE_DIR
 SLIDESHOW_DELAY=30
 DISPLAY_MODE=fullscreen
 DISPLAY_SERVER=auto
 FEH_ADDITIONAL_OPTIONS=
 FETCH_INTERVAL=15
+TZ=$(cat /etc/timezone 2>/dev/null || echo "UTC")
 EOF
     echo -e "${GREEN}Created default configuration at $ENV_FILE${NC}"
+  fi
+  
+  # Copy example .env file if it exists
+  if [ -f "$SCRIPT_DIR/.env-example" ] && [ ! -f "$SCRIPT_DIR/.env" ]; then
+    cp "$SCRIPT_DIR/.env-example" "$SCRIPT_DIR/.env"
+    echo -e "${GREEN}Copied .env-example to .env${NC}"
   fi
 }
 
@@ -199,6 +205,10 @@ start_container() {
   # Create necessary directories if they don't exist
   mkdir -p "$SCRIPT_DIR/logs"
   mkdir -p "$IMAGE_DIR"
+  
+  # Ensure database file is writable
+  touch "$SCRIPT_DIR/photoframe.db" 2>/dev/null || true
+  chmod 666 "$SCRIPT_DIR/photoframe.db" 2>/dev/null || true
   
   # Run the container
   docker run -d \

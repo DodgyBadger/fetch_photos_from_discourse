@@ -25,7 +25,7 @@ RUN echo "*/15 * * * * cd /app && python /app/photoframe.py >> /app/logs/photofr
 # Create an entrypoint script
 RUN echo '#!/bin/bash' > /entrypoint.sh && \
     echo 'cd /app' >> /entrypoint.sh && \
-    echo 'python -c "from db import init_db; init_db()"' >> /entrypoint.sh && \
+    echo 'python -c "import os; from db import init_db; init_db()"' >> /entrypoint.sh && \
     echo 'cron' >> /entrypoint.sh && \
     echo 'echo "PhotoFrame started. Use docker logs to view output."' >> /entrypoint.sh && \
     echo 'tail -f /dev/null' >> /entrypoint.sh && \
