@@ -1,4 +1,5 @@
 import logging
+import os
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -6,8 +7,9 @@ logger = logging.getLogger(__name__)
 
 def setup_logging():
     """Configure logging once for the entire application"""
-    # Create logs directory if it doesn't exist
-    log_dir = Path(__file__).parent / 'logs'
+    # Create logs directory in the project root, not in src
+    project_root = Path(__file__).parent.parent
+    log_dir = project_root / 'logs'
     log_dir.mkdir(exist_ok=True)
     
     # Set up file handler with rotation
