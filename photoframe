@@ -23,7 +23,7 @@ usage() {
     echo "Commands:"
     echo "  install     Install dependencies and set up cron job"
     echo "  reschedule  Change the schedule of the cron job"
-    echo "  stop        Stop the running photoframe process"
+    echo "  run         Run the photoframe script once manually"
     echo "  uninstall   Remove cron job and virtual environment"
     echo
     exit 1
@@ -409,6 +409,16 @@ uninstall() {
     echo -e "${GREEN}Photoframe uninstalled.${NC}"
 }
 
+# Run command - manually run the photoframe script once
+run() {
+    echo -e "${GREEN}Running photoframe script...${NC}"
+    
+    # Set PYTHONPATH to include the app directory
+    PYTHONPATH=$APP_DIR $VENV_DIR/bin/python $APP_DIR/src/photoframe.py
+    
+    echo -e "${GREEN}Photoframe script execution complete.${NC}"
+}
+
 # Main script logic
 if [ $# -eq 0 ]; then
     usage
@@ -420,6 +430,9 @@ case "$1" in
         ;;
     reschedule)
         reschedule
+        ;;
+    run)
+        run
         ;;
     uninstall)
         uninstall
