@@ -34,7 +34,7 @@ install() {
     echo -e "${GREEN}Installing photoframe...${NC}"
     
     # Detect package manager (apt or homebrew)
-    if command -v apt-get &> /dev/null; then
+    if command -v apt &> /dev/null; then
         PKG_MANAGER="apt"
     elif command -v brew &> /dev/null; then
         PKG_MANAGER="brew"
@@ -52,8 +52,8 @@ install() {
             brew install astral-sh/tap/uv
         elif [ "$PKG_MANAGER" = "apt" ]; then
             echo "Installing uv dependencies..."
-            sudo apt-get update
-            sudo apt-get install -y curl build-essential
+            sudo apt update
+            sudo apt install -y curl build-essential
             
             echo "Installing uv from binary release..."
             curl -LsSf https://astral.sh/uv/install.sh | sh
