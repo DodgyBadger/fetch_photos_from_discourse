@@ -19,7 +19,9 @@ A Python application that fetches and manages images from Discourse for a digita
 - **macOS** - 10.15 (Catalina) or newer
 - **Raspberry Pi OS** - Bullseye or newer
 
-## Installation
+## Quick Installation
+
+If you don't need to make any customizations to the code, you can install directly:
 
 ```bash
 # Clone the repository
@@ -32,6 +34,8 @@ chmod +x photoframe
 # Run the installation
 ./photoframe install
 ```
+
+For a more flexible setup that allows easier updates, see the "Installation & Updates" section below.
 
 ## Configuration
 
@@ -62,22 +66,41 @@ The `photoframe` script provides several commands:
 - **reschedule**: Change how often images are fetched
 - **uninstall**: Remove the scheduler job and optionally the virtual environment
 
-## Updating
+## Installation & Updates
+
+### First-time Installation
+
+It's recommended to fork this repository on GitHub first, then clone your fork:
+
+```bash
+# Clone your forked repository
+git clone https://github.com/YOUR-USERNAME/fetch_photos_from_discourse.git
+cd fetch_photos_from_discourse
+
+# Make the photoframe script executable
+chmod +x photoframe
+
+# Run the installation
+./photoframe install
+```
+
+### Updating
 
 To update to the latest version:
 
 ```bash
-# If you have local changes (like from chmod), reset them first
-git reset --hard
+# Add the original repository as a remote (first time only)
+git remote add upstream https://github.com/DodgyBadger/fetch_photos_from_discourse.git
 
-# Pull the latest changes
-git pull
+# Fetch and merge updates from the original repository
+git fetch upstream
+git merge upstream/main
 
 # Run the installation again to update dependencies
 ./photoframe install
 ```
 
-Note: The `git reset --hard` command will discard any local changes. If you've made intentional modifications, consider using `git stash` instead.
+This approach allows you to keep your local configuration while still getting updates from the original repository.
 
 ## Logs
 
