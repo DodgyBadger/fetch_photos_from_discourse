@@ -233,6 +233,11 @@ def main():
         db.init_db()
         logger.info("Database initialized")
         
+        # Ensure image directory exists
+        if not os.path.exists(image_dir):
+            logger.info(f"Creating image directory: {image_dir}")
+            os.makedirs(image_dir, exist_ok=True)
+        
         tagged_topics = get_tagged_topics(base_url, tag_name)
         if not tagged_topics:
             logger.info("No new topics since last fetch")
