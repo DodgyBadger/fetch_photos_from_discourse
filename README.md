@@ -23,8 +23,8 @@ A Python application that fetches and manages images from Discourse for a digita
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/photoframe.git
-cd photoframe
+git clone https://github.com/DodgyBadger/fetch_photos_from_discourse.git
+cd fetch_photos_from_discourse
 
 # Make the photoframe script executable
 chmod +x photoframe
