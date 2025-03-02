@@ -67,13 +67,17 @@ The `photoframe` script provides several commands:
 To update to the latest version:
 
 ```bash
+# If you have local changes (like from chmod), reset them first
+git reset --hard
+
 # Pull the latest changes
 git pull
-
 
 # Run the installation again to update dependencies
 ./photoframe install
 ```
+
+Note: The `git reset --hard` command will discard any local changes. If you've made intentional modifications, consider using `git stash` instead.
 
 ## Logs
 
