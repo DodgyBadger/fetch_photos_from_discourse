@@ -35,21 +35,22 @@ chmod +x photoframe
 
 ## Configuration
 
-Create a `.env` file in the project root with the following variables:
+Copy the provided example configuration file and edit it with your settings:
 
-```
-DISCOURSE_API_KEY=your_api_key
-DISCOURSE_API_USERNAME=your_username
-DISCOURSE_BASE_URL=https://your-discourse-instance.com
-DISCOURSE_TAG=photo
-BATCH_SIZE=20
-IMAGE_LIMIT=1000
-IMAGE_DIR=data/images
-FETCH_INTERVAL=60
+```bash
+cp .env-example .env
+nano .env  # or use your preferred text editor
 ```
 
+The `.env` file contains the following variables:
+
+- `DISCOURSE_BASE_URL`: Your Discourse instance URL
+- `DISCOURSE_API_KEY`: API key generated in the Discourse admin panel
+- `DISCOURSE_API_USERNAME`: Username to use with the API
+- `DISCOURSE_TAG`: Tag to filter topics containing images
 - `FETCH_INTERVAL`: Time in minutes between image fetches (default: 60)
 - `IMAGE_LIMIT`: Maximum number of images to store (oldest will be removed)
+- `IMAGE_DIR`: Directory to store downloaded images
 
 ## Commands
 
