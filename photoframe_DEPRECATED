@@ -1,0 +1,465 @@
+#!/bin/bash
+set -e
+
+# PhotoFrame installation and management script
+# This script handles both the host-level dependencies (Feh) and
+# containerized Python application without requiring Docker knowledge.
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_NAME="photoframe"
+CONFIG_DIR="$SCRIPT_DIR/config"
+IMAGE_DIR="$SCRIPT_DIR/data/images"
+LOGS_DIR="$SCRIPT_DIR/logs"
+DOCKER_IMAGE="photoframe:latest"
+ENV_FILE="$CONFIG_DIR/.env"
+
+# Colors for output
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+# Check if Docker is installed
+check_docker() {
+  if ! command -v docker &> /dev/null; then
+    echo -e "${RED}Docker is not installed. Please install Docker first:${NC}"
+    echo "https://docs.docker.com/engine/install/"
+    exit 1
+  fi
+}
+
+# Check if Feh is installed, install if needed
+check_feh() {
+  if ! command -v feh &> /dev/null; then
+    echo -e "${YELLOW}Feh not found, attempting to install...${NC}"
+    
+    if command -v apt-get &> /dev/null; then
+      sudo apt-get update
+      sudo apt-get install -y feh
+    elif command -v dnf &> /dev/null; then
+      sudo dnf install -y feh
+    elif command -v pacman &> /dev/null; then
+      sudo pacman -S --noconfirm feh
+    else
+      echo -e "${RED}Unsupported package manager. Please install Feh manually.${NC}"
+      exit 1
+    fi
+    
+    if ! command -v feh &> /dev/null; then
+      echo -e "${RED}Feh installation failed.${NC}"
+      exit 1
+    fi
+    echo -e "${GREEN}Feh installed successfully.${NC}"
+  else
+    echo -e "${GREEN}Feh is already installed.${NC}"
+  fi
+}
+
+# Create configuration directory and default environment file
+setup_config() {
+  # Create all required directories
+  mkdir -p "$CONFIG_DIR"
+  mkdir -p "$IMAGE_DIR"
+  mkdir -p "$LOGS_DIR"
+  
+  # Handle environment file configuration
+  # First check if there's a .env file in the script root
+  if [ -f "$SCRIPT_DIR/.env" ]; then
+    # Use .env from the root directory
+    cp "$SCRIPT_DIR/.env" "$ENV_FILE"
+    echo -e "${GREEN}Using .env from application root${NC}"
+  # Next check if there's a .env-example file
+  elif [ -f "$SCRIPT_DIR/.env-example" ]; then
+    # Copy from example to both locations (for legacy compatibility)
+    cp "$SCRIPT_DIR/.env-example" "$SCRIPT_DIR/.env"
+    cp "$SCRIPT_DIR/.env-example" "$ENV_FILE"
+    echo -e "${GREEN}Created .env from .env-example${NC}"
+  # Finally, create a default if nothing exists
+  elif [ ! -f "$ENV_FILE" ]; then
+    cat > "$ENV_FILE" <<EOF
+# PhotoFrame Configuration
+SLIDESHOW_DELAY=30
+DISPLAY_MODE=fullscreen
+DISPLAY_SERVER=auto
+FEH_ADDITIONAL_OPTIONS=
+FETCH_INTERVAL=15
+TZ=$(cat /etc/timezone 2>/dev/null || echo "UTC")
+EOF
+    # Also create a copy in the root for visibility
+    cp "$ENV_FILE" "$SCRIPT_DIR/.env"
+    echo -e "${GREEN}Created default configuration at $ENV_FILE and $SCRIPT_DIR/.env${NC}"
+  fi
+  
+  # Check for custom default image or create a fallback
+  DEFAULT_IMAGE="$SCRIPT_DIR/default.jpg"
+  FALLBACK_IMAGE="$IMAGE_DIR/default-image.png"
+  
+  # Look for any user-provided default image
+  if [ -f "$DEFAULT_IMAGE" ]; then
+    # User provided a default image
+    echo -e "${GREEN}Found custom default image at $DEFAULT_IMAGE${NC}"
+    cp "$DEFAULT_IMAGE" "$FALLBACK_IMAGE"
+    echo -e "${GREEN}Copied custom default image to $FALLBACK_IMAGE${NC}"
+  elif [ -f "$IMAGE_DIR/default.jpg" ] || [ -f "$IMAGE_DIR/default.png" ]; then
+    # User already has a default image in the images directory
+    echo -e "${GREEN}Using existing default image in $IMAGE_DIR${NC}"
+  else
+    # No custom image found, create a simple fallback
+    echo -e "${YELLOW}No custom default image found. Creating minimal fallback image...${NC}"
+    # Base64 encoded 1x1 transparent PNG
+    BASE64_PNG="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+    echo "$BASE64_PNG" | base64 -d > "$FALLBACK_IMAGE"
+    echo -e "${GREEN}Created fallback image at $FALLBACK_IMAGE${NC}"
+  fi
+  
+  # Add a readme text file explaining the default/fallback image
+  if [ ! -f "$IMAGE_DIR/README.txt" ]; then
+    cat > "$IMAGE_DIR/README.txt" <<EOF
+This directory contains images for your PhotoFrame.
+
+Custom Default Image:
+--------------------
+You can provide your own default image (logo, welcome screen, etc.) by:
+1. Adding a file named 'default.jpg' or 'default.png' to the application directory
+2. The next time you run the installer, it will use your image instead
+
+The default image ensures Feh can start properly even if no images 
+have been downloaded yet from your configured sources.
+
+Once your PhotoFrame downloads actual images, this default image will
+be shown along with your other photos in the slideshow.
+EOF
+  fi
+}
+
+# Detect display server (X11 or Wayland)
+detect_display_server() {
+  if [ -n "$WAYLAND_DISPLAY" ]; then
+    echo "wayland"
+  elif [ -n "$DISPLAY" ]; then
+    echo "x11"
+  else
+    echo "x11"  # Default to X11
+  fi
+}
+
+# Setup systemd service for Feh
+setup_feh_service() {
+  if ! command -v systemctl &> /dev/null; then
+    echo -e "${YELLOW}systemctl not found - skipping systemd service setup${NC}"
+    return
+  fi
+
+  # Load variables from env file
+  source "$ENV_FILE"
+  
+  DISPLAY_SERVER=${DISPLAY_SERVER:-auto}
+  if [ "$DISPLAY_SERVER" = "auto" ]; then
+    DISPLAY_SERVER=$(detect_display_server)
+  fi
+  
+  # Configure display environment
+  if [ "$DISPLAY_SERVER" = "wayland" ]; then
+    DISPLAY_ENV="Environment=WAYLAND_DISPLAY=wayland-0\nEnvironment=XDG_RUNTIME_DIR=/run/user/%U"
+  else
+    DISPLAY_ENV="Environment=DISPLAY=:0"
+  fi
+  
+  # Build Feh command
+  FEH_CMD="/usr/bin/feh --recursive"
+  if [ "${DISPLAY_MODE}" = "fullscreen" ]; then
+    FEH_CMD="$FEH_CMD --full-screen"
+  fi
+  FEH_CMD="$FEH_CMD --slideshow-delay ${SLIDESHOW_DELAY:-30} ${FEH_ADDITIONAL_OPTIONS} ${IMAGE_DIR}"
+  
+  # Create service file
+  SERVICE_FILE="/tmp/$APP_NAME.service"
+  cat > "$SERVICE_FILE" <<EOF
+[Unit]
+Description=Feh Photo Frame Slideshow
+After=network.target graphical-session.target
+
+[Service]
+Type=simple
+User=%i
+$DISPLAY_ENV
+ExecStart=$FEH_CMD
+Restart=always
+RestartSec=3
+
+# Security measures
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+
+[Install]
+WantedBy=graphical.target
+EOF
+
+  # Install and enable the service
+  sudo mv "$SERVICE_FILE" "/etc/systemd/system/$APP_NAME@.service"
+  sudo systemctl daemon-reload
+  sudo systemctl enable "$APP_NAME@$USER"
+  sudo systemctl start "$APP_NAME@$USER"
+  
+  echo -e "${GREEN}Feh service installed and started.${NC}"
+}
+
+# Build Docker image
+build_docker_image() {
+  echo "Building Docker image..."
+  
+  # Create a temporary entrypoint script to customize the image
+  ENTRYPOINT_SCRIPT="$SCRIPT_DIR/docker/entrypoint.sh"
+  
+  # Create docker directory if it doesn't exist
+  mkdir -p "$SCRIPT_DIR/docker"
+  
+  # Create a dynamic entrypoint script
+  cat > "$ENTRYPOINT_SCRIPT" <<EOF
+#!/bin/bash
+set -e
+
+# Create cron job with current FETCH_INTERVAL
+echo "*/\${FETCH_INTERVAL:-60} * * * * cd /app && python /app/photoframe.py >> /app/logs/photoframe.log 2>&1" > /etc/cron.d/photoframe
+chmod 0644 /etc/cron.d/photoframe
+
+# Initialize database
+python /app/db.py
+
+# Start cron service
+cron
+
+# Run photoframe.py immediately to fetch images
+echo "Running initial photo fetch..."
+cd /app
+if python /app/photoframe.py >> /app/logs/photoframe.log 2>&1; then
+  echo "✓ Initial photo fetch completed successfully."
+else
+  echo "⚠️ Initial photo fetch encountered issues."
+  echo "Check logs for details. The fallback image will be used until photos are successfully downloaded."
+fi
+
+echo "PhotoFrame container running with fetch interval: \${FETCH_INTERVAL:-60} minutes"
+tail -f /dev/null
+EOF
+  
+  # Make entrypoint script executable
+  chmod +x "$ENTRYPOINT_SCRIPT"
+  
+  # Update the Dockerfile's entrypoint
+  if grep -q "ENTRYPOINT \[" "$SCRIPT_DIR/docker/Dockerfile"; then
+    sed -i 's|ENTRYPOINT \[.*\]|ENTRYPOINT \["/app/entrypoint.sh"\]|' "$SCRIPT_DIR/docker/Dockerfile"
+  fi
+  
+  # Build the Docker image
+  docker build -t "$DOCKER_IMAGE" -f "$SCRIPT_DIR/docker/Dockerfile" "$SCRIPT_DIR"
+  
+  echo -e "${GREEN}Docker image built successfully.${NC}"
+}
+
+# Start the Docker container
+start_container() {
+  echo "Starting PhotoFrame container..."
+  
+  # Create necessary directories if they don't exist
+  mkdir -p "$LOGS_DIR"
+  mkdir -p "$IMAGE_DIR"
+  mkdir -p "$CONFIG_DIR"
+  
+  # Ensure database file is writable
+  DB_FILE="$SCRIPT_DIR/data/photoframe.db"
+  touch "$DB_FILE" 2>/dev/null || true
+  chmod 666 "$DB_FILE" 2>/dev/null || true
+  
+  # Run the container
+  docker run -d \
+    --name "$APP_NAME" \
+    --restart unless-stopped \
+    -v "$LOGS_DIR:/app/logs" \
+    -v "$DB_FILE:/app/photoframe.db" \
+    -v "$IMAGE_DIR:/data/images" \
+    --env-file "$ENV_FILE" \
+    "$DOCKER_IMAGE"
+    
+  echo -e "${GREEN}PhotoFrame container started.${NC}"
+}
+
+# Stop the Docker container
+stop_container() {
+  echo "Stopping PhotoFrame container..."
+  docker stop "$APP_NAME" || true
+  docker rm "$APP_NAME" || true
+  echo -e "${GREEN}PhotoFrame container stopped.${NC}"
+}
+
+# Install PhotoFrame
+install() {
+  echo -e "${GREEN}=== Installing PhotoFrame ===${NC}"
+  check_docker
+  check_feh
+  setup_config
+  build_docker_image
+  setup_feh_service
+  start_container
+  echo -e "${GREEN}PhotoFrame installation complete!${NC}"
+  echo "To see logs: docker logs $APP_NAME"
+}
+
+# Update PhotoFrame
+update() {
+  echo -e "${GREEN}=== Updating PhotoFrame ===${NC}"
+  stop_container
+  build_docker_image
+  start_container
+  echo -e "${GREEN}PhotoFrame updated successfully.${NC}"
+}
+
+# Start PhotoFrame services
+start() {
+  echo -e "${GREEN}=== Starting PhotoFrame ===${NC}"
+  
+  # Start Feh service if systemd is available
+  if command -v systemctl &> /dev/null; then
+    sudo systemctl start "$APP_NAME@$USER" || true
+  fi
+  
+  # Start container if it exists but is stopped
+  if docker ps -a --format "{{.Names}}" | grep -q "^$APP_NAME$"; then
+    docker start "$APP_NAME" || start_container
+  else
+    start_container
+  fi
+  
+  echo -e "${GREEN}PhotoFrame started.${NC}"
+}
+
+# Stop PhotoFrame services
+stop() {
+  echo -e "${GREEN}=== Stopping PhotoFrame ===${NC}"
+  
+  # Stop Feh service if systemd is available
+  if command -v systemctl &> /dev/null; then
+    sudo systemctl stop "$APP_NAME@$USER" || true
+  fi
+  
+  # Stop container
+  stop_container
+  
+  echo -e "${GREEN}PhotoFrame stopped.${NC}"
+}
+
+# Show status
+status() {
+  echo -e "${GREEN}=== PhotoFrame Status ===${NC}"
+  
+  # Check system environment
+  echo -e "${YELLOW}System Environment:${NC}"
+  echo -e "User: $(whoami)"
+  echo -e "DISPLAY: $DISPLAY"
+  if [ -n "$WAYLAND_DISPLAY" ]; then
+    echo -e "WAYLAND_DISPLAY: $WAYLAND_DISPLAY"
+  fi
+  
+  # Check Feh installation and version
+  echo -e "\n${YELLOW}Feh Status:${NC}"
+  if command -v feh &> /dev/null; then
+    echo -e "Feh installed: $(which feh)"
+    echo -e "Feh version: $(feh --version | head -n 1)"
+  else
+    echo -e "${RED}Feh not installed${NC}"
+  fi
+  
+  # Check Feh service status
+  if command -v systemctl &> /dev/null; then
+    echo -e "\n${YELLOW}Feh Service Status:${NC}"
+    systemctl status "$APP_NAME@$USER" --no-pager || true
+    
+    # Check Feh service logs
+    echo -e "\n${YELLOW}Feh Service Logs (last 10 lines):${NC}"
+    journalctl -u "$APP_NAME@$USER" --no-pager -n 10 || echo "No service logs found"
+  fi
+  
+  # Check config directories and files
+  echo -e "\n${YELLOW}Config Status:${NC}"
+  echo -e "Config directory: $(ls -la $CONFIG_DIR 2>/dev/null || echo 'Not found')"
+  echo -e "Images directory: $(ls -la $IMAGE_DIR 2>/dev/null || echo 'Not found')"
+  echo -e "Logs directory: $(ls -la $LOGS_DIR 2>/dev/null || echo 'Not found')"
+  echo -e "Database file: $(ls -la $CONFIG_DIR/photoframe.db 2>/dev/null || echo 'Not found')"
+  echo -e "Image count: $(find $IMAGE_DIR -type f -name "*.jpg" -o -name "*.png" -o -name "*.gif" 2>/dev/null | wc -l)"
+  
+  # Check cron jobs in the container
+  echo -e "\n${YELLOW}Cron Job Status (Container):${NC}"
+  if docker ps -q -f name="$APP_NAME" &>/dev/null; then
+    echo -e "Checking cron job in container..."
+    container_cron=$(docker exec "$APP_NAME" cat /etc/cron.d/photoframe 2>/dev/null || echo "Could not access cron file in container")
+    echo -e "$container_cron"
+    
+    # Check if cron is running in container
+    cron_running=$(docker exec "$APP_NAME" ps aux | grep cron | grep -v grep 2>/dev/null || echo "Cron process not found")
+    if [ -n "$cron_running" ]; then
+      echo -e "${GREEN}Cron service is running in container${NC}"
+    else
+      echo -e "${RED}WARNING: Cron service does not appear to be running in container${NC}"
+    fi
+  else
+    echo -e "${YELLOW}Container not running - cannot check cron status${NC}"
+  fi
+  
+  # Check Docker status
+  if command -v docker &> /dev/null; then
+    echo -e "\n${YELLOW}Docker Container Status:${NC}"
+    docker ps -a --filter "name=$APP_NAME" || echo "Docker command failed"
+    
+    echo -e "\n${YELLOW}Docker Container Logs (last 10 lines):${NC}"
+    docker logs "$APP_NAME" --tail 10 2>/dev/null || echo "No container logs found"
+  fi
+  
+  # Check application logs
+  echo -e "\n${YELLOW}Application Logs (last 10 lines):${NC}"
+  tail -n 10 "$SCRIPT_DIR/logs/photoframe.log" 2>/dev/null || echo "No application logs found"
+  
+  # Check for common issues
+  echo -e "\n${YELLOW}Potential Issues:${NC}"
+  if [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ]; then
+    echo -e "${RED}WARNING:${NC} No display environment detected (DISPLAY or WAYLAND_DISPLAY). Feh requires a display to run."
+    echo -e "  → Connect a physical display or set up Xvfb (virtual framebuffer)"
+  fi
+  
+  if [ "$(find $IMAGE_DIR -type f -name "*.jpg" -o -name "*.png" -o -name "*.gif" 2>/dev/null | wc -l)" -eq 0 ]; then
+    echo -e "${RED}WARNING:${NC} No images found in $IMAGE_DIR"
+  fi
+}
+
+# Main script logic
+case "$1" in
+  install)
+    install
+    ;;
+  update)
+    update
+    ;;
+  start)
+    start
+    ;;
+  stop)
+    stop
+    ;;
+  status)
+    status
+    ;;
+  *)
+    echo "Usage: $0 {install|update|start|stop|status}"
+    echo ""
+    echo "Commands:"
+    echo "  install  - Install PhotoFrame (Docker + Feh)"
+    echo "  update   - Update to latest version"
+    echo "  start    - Start PhotoFrame services"
+    echo "  stop     - Stop PhotoFrame services"
+    echo "  status   - Show status of PhotoFrame services"
+    exit 1
+    ;;
+esac
+
+exit 0
