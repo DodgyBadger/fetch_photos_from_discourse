@@ -44,13 +44,13 @@ nano .env  # or use your preferred text editor
 
 The `.env` file contains the following variables:
 
-- `DISCOURSE_BASE_URL`: Your Discourse instance URL
-- `DISCOURSE_API_KEY`: API key generated in the Discourse admin panel
-- `DISCOURSE_API_USERNAME`: Username to use with the API
-- `DISCOURSE_TAG`: Tag to filter topics containing images
+- `DISCOURSE_BASE_URL`: Your Discourse instance URL.
+- `DISCOURSE_API_KEY`: API key generated in the Discourse admin panel.
+- `DISCOURSE_API_USERNAME`: Username to use with the API.
+- `DISCOURSE_TAG`: Fetch images contained within thopics with this tag.
 - `FETCH_INTERVAL`: Time in minutes between image fetches (default: 60)
-- `IMAGE_LIMIT`: Maximum number of images to store (oldest will be removed)
-- `IMAGE_DIR`: Directory to store downloaded images
+- `IMAGE_LIMIT`: Maximum number of images to be stored at any time. If exceeded, oldest images will be removed.
+- `IMAGE_DIR`: Directory to store downloaded images. Only edit if you know what you are doing.
 
 ## Commands
 
@@ -69,6 +69,7 @@ To update to the latest version:
 ```bash
 # Pull the latest changes
 git pull
+
 
 # Run the installation again to update dependencies
 ./photoframe install
