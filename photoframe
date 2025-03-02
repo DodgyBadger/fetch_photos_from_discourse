@@ -356,18 +356,6 @@ EOF
     echo "Launchd job set with interval: $interval seconds"
 }
 
-# Stop command - kills running photoframe processes
-stop() {
-    echo -e "${YELLOW}Stopping photoframe processes...${NC}"
-    
-    if pgrep -f "python.*photoframe.py" > /dev/null; then
-        pkill -f "python.*photoframe.py"
-        echo -e "${GREEN}Photoframe processes stopped.${NC}"
-    else
-        echo -e "${YELLOW}No photoframe processes found running.${NC}"
-    fi
-}
-
 # Uninstall command - removes scheduled job and virtual environment
 uninstall() {
     echo -e "${YELLOW}Uninstalling photoframe...${NC}"
@@ -432,9 +420,6 @@ case "$1" in
         ;;
     reschedule)
         reschedule
-        ;;
-    stop)
-        stop
         ;;
     uninstall)
         uninstall
