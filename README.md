@@ -1,6 +1,6 @@
 # Photoframe
 
-A Python application that fetches and manages images from Discourse for a digital photo frame display.
+A Python application that fetches images from specifically tagged topics on a Discourse instance.
 
 ## Prerequisites
 
@@ -51,7 +51,7 @@ The `.env` file contains the following variables:
 - `DISCOURSE_BASE_URL`: Your Discourse instance URL.
 - `DISCOURSE_API_KEY`: API key generated in the Discourse admin panel.
 - `DISCOURSE_API_USERNAME`: Username to use with the API.
-- `DISCOURSE_TAG`: Fetch images contained within thopics with this tag.
+- `DISCOURSE_TAG`: Fetch images contained within topics with this tag.
 - `FETCH_INTERVAL`: Time in minutes between image fetches (default: 60)
 - `IMAGE_LIMIT`: Maximum number of images to be stored at any time. If exceeded, oldest images will be removed.
 - `IMAGE_DIR`: Directory to store downloaded images. Only edit if you know what you are doing.
