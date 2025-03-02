@@ -24,6 +24,7 @@ usage() {
     echo "  install     Install dependencies and set up cron job"
     echo "  reschedule  Change the schedule of the cron job"
     echo "  run         Run the photoframe script once manually"
+    echo "  status      Display current schedule and recent logs"
     echo "  uninstall   Remove cron job and virtual environment"
     echo
     exit 1
@@ -488,6 +489,90 @@ run() {
     echo -e "${GREEN}Photoframe script execution complete.${NC}"
 }
 
+# Status command - display current schedule and recent logs
+status() {
+    echo -e "${GREEN}Photoframe Status${NC}"
+    echo "----------------------------------------"
+    
+    # Check if photoframe is installed
+    if [ ! -d "$VENV_DIR" ]; then
+        echo -e "${YELLOW}Photoframe is not installed. Run '$0 install' first.${NC}"
+        return
+    fi
+    
+    # Display current schedule
+    echo -e "${GREEN}Current Schedule:${NC}"
+    if [ -f "$APP_DIR/.env" ] && grep -q "^FETCH_INTERVAL=" "$APP_DIR/.env"; then
+        MINUTES=$(grep -E "^FETCH_INTERVAL=" "$APP_DIR/.env" | cut -d= -f2)
+        echo "Running every $MINUTES minutes"
+        
+        # Convert to human-readable format for common intervals
+        case "$MINUTES" in
+            "60") echo "(hourly)" ;;
+            "1440") echo "(daily)" ;;
+            "10080") echo "(weekly)" ;;
+            "43200") echo "(monthly)" ;;
+        esac
+    else
+        echo -e "${YELLOW}Schedule not found in .env file${NC}"
+    fi
+    
+    # Check scheduler status
+    echo -e "\n${GREEN}Scheduler Status:${NC}"
+    local scheduler=$(detect_scheduler)
+    echo "Using scheduler: $scheduler"
+    
+    case "$scheduler" in
+        "cron")
+            if crontab -l 2>/dev/null | grep -q "$APP_DIR/src/photoframe.py"; then
+                echo -e "${GREEN}Cron job is active${NC}"
+                echo "Current cron entry:"
+                crontab -l | grep "$APP_DIR/src/photoframe.py"
+            else
+                echo -e "${YELLOW}No active cron job found${NC}"
+            fi
+            ;;
+        "systemd")
+            if systemctl --user is-active photoframe.timer &>/dev/null; then
+                echo -e "${GREEN}Systemd timer is active${NC}"
+                systemctl --user status photoframe.timer | grep -E "Active:|Trigger:"
+            else
+                echo -e "${YELLOW}Systemd timer is not active${NC}"
+            fi
+            ;;
+        "launchd")
+            local plist_file="$HOME/Library/LaunchAgents/com.user.photoframe.plist"
+            if [ -f "$plist_file" ] && launchctl list | grep -q "com.user.photoframe"; then
+                echo -e "${GREEN}Launchd job is active${NC}"
+                echo "Plist file: $plist_file"
+            else
+                echo -e "${YELLOW}Launchd job is not active${NC}"
+            fi
+            ;;
+    esac
+    
+    # Display recent logs
+    echo -e "\n${GREEN}Recent Logs:${NC}"
+    LOG_FILE="$APP_DIR/logs/photoframe.log"
+    if [ -f "$LOG_FILE" ]; then
+        echo "Last 20 log entries:"
+        echo "----------------------------------------"
+        tail -n 20 "$LOG_FILE"
+        echo "----------------------------------------"
+        echo "Full logs available at: $LOG_FILE"
+    else
+        echo -e "${YELLOW}No log file found at $LOG_FILE${NC}"
+    fi
+    
+    # Display available commands
+    echo -e "\n${GREEN}Available Commands:${NC}"
+    echo "  $0 install     - Install dependencies and set up cron job"
+    echo "  $0 reschedule  - Change the schedule of the cron job"
+    echo "  $0 run         - Run the photoframe script once manually"
+    echo "  $0 status      - Display this status information"
+    echo "  $0 uninstall   - Remove cron job and virtual environment"
+}
+
 # Main script logic
 if [ $# -eq 0 ]; then
     usage
@@ -502,6 +587,9 @@ case "$1" in
         ;;
     run)
         run
+        ;;
+    status)
+        status
         ;;
     uninstall)
         uninstall
