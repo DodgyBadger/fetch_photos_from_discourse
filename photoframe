@@ -117,64 +117,150 @@ install() {
     echo "Installing dependencies with uv..."
     $UV_CMD pip install --python "$VENV_DIR/bin/python" -r "$APP_DIR/requirements.txt"
     
-    # Get FETCH_INTERVAL from .env or default to hourly
+    # Get FETCH_INTERVAL from .env or default to 60 minutes (hourly)
+    MINUTES=60
     if [ -f "$APP_DIR/.env" ]; then
-        FETCH_INTERVAL=$(grep -E "^FETCH_INTERVAL=" "$APP_DIR/.env" | cut -d= -f2)
+        ENV_MINUTES=$(grep -E "^FETCH_INTERVAL=" "$APP_DIR/.env" | cut -d= -f2)
+        if [[ "$ENV_MINUTES" =~ ^[0-9]+$ ]]; then
+            MINUTES=$ENV_MINUTES
+        fi
     fi
     
-    # Default to hourly if FETCH_INTERVAL not found or empty
-    if [ -z "$FETCH_INTERVAL" ]; then
-        FETCH_INTERVAL="0 * * * *"  # Default: hourly
-        echo "FETCH_INTERVAL not found in .env, defaulting to hourly schedule."
-    fi
+    # Convert minutes to appropriate scheduler format
+    SCHEDULE=$(minutes_to_schedule $MINUTES)
     
-    # Set up cron job with the interval from .env
-    setup_cron "$FETCH_INTERVAL"
+    # Set up job with the calculated schedule
+    setup_cron "$SCHEDULE"
+    
+    echo "FETCH_INTERVAL set to $MINUTES minutes"
     
     echo -e "${GREEN}Installation complete!${NC}"
-    echo "Photoframe will run with schedule: $FETCH_INTERVAL"
+    echo "Photoframe will run every $MINUTES minutes."
     echo "Use '$0 reschedule' to change the schedule."
+}
+
+# Convert minutes to appropriate scheduler format
+minutes_to_schedule() {
+    local minutes=$1
+    local scheduler=$(detect_scheduler)
+    
+    # Handle special cases
+    if [ $minutes -eq 60 ]; then
+        # Hourly
+        case "$scheduler" in
+            "cron") echo "0 * * * *" ;;
+            "systemd") echo "hourly" ;;
+            "launchd") echo "3600" ;;
+            *) echo "0 * * * *" ;;
+        esac
+    elif [ $minutes -eq 1440 ]; then
+        # Daily (24 hours)
+        case "$scheduler" in
+            "cron") echo "0 0 * * *" ;;
+            "systemd") echo "daily" ;;
+            "launchd") echo "86400" ;;
+            *) echo "0 0 * * *" ;;
+        esac
+    elif [ $minutes -eq 10080 ]; then
+        # Weekly (7 days)
+        case "$scheduler" in
+            "cron") echo "0 0 * * 0" ;;
+            "systemd") echo "weekly" ;;
+            "launchd") echo "604800" ;;
+            *) echo "0 0 * * 0" ;;
+        esac
+    elif [ $minutes -eq 43200 ]; then
+        # Monthly (30 days approx)
+        case "$scheduler" in
+            "cron") echo "0 0 1 * *" ;;
+            "systemd") echo "monthly" ;;
+            "launchd") echo "2592000" ;;
+            *) echo "0 0 1 * *" ;;
+        esac
+    else
+        # Custom interval
+        case "$scheduler" in
+            "cron")
+                # Convert minutes to cron format
+                if [ $minutes -lt 60 ]; then
+                    # Every X minutes
+                    echo "*/$minutes * * * *"
+                elif [ $((minutes % 60)) -eq 0 ]; then
+                    # Every X hours
+                    local hours=$((minutes / 60))
+                    if [ $hours -eq 1 ]; then
+                        echo "0 * * * *"
+                    else
+                        echo "0 */$hours * * *"
+                    fi
+                else
+                    # Fallback for odd intervals
+                    echo "*/$minutes * * * *"
+                fi
+                ;;
+            "systemd")
+                # For systemd, we'll use OnUnitActiveSec for custom intervals
+                echo "${minutes}m"
+                ;;
+            "launchd")
+                # Convert minutes to seconds for launchd
+                echo "$((minutes * 60))"
+                ;;
+            *)
+                # Default to cron format
+                if [ $minutes -lt 60 ]; then
+                    echo "*/$minutes * * * *"
+                elif [ $((minutes % 60)) -eq 0 ]; then
+                    local hours=$((minutes / 60))
+                    if [ $hours -eq 1 ]; then
+                        echo "0 * * * *"
+                    else
+                        echo "0 */$hours * * *"
+                    fi
+                else
+                    echo "*/$minutes * * * *"
+                fi
+                ;;
+        esac
+    fi
 }
 
 # Reschedule command - changes the job schedule
 reschedule() {
     echo -e "${YELLOW}Rescheduling photoframe...${NC}"
     
-    local scheduler=$(detect_scheduler)
+    echo "Enter interval in minutes (e.g., 60 for hourly, 1440 for daily):"
+    read -r minutes
     
-    case "$scheduler" in
-        "cron")
-            echo "Enter new cron schedule (e.g., '0 * * * *' for hourly):"
-            read -r schedule
-            ;;
-        "systemd")
-            echo "Enter schedule (hourly, daily, weekly, monthly, or cron format '0 * * * *'):"
-            read -r schedule
-            ;;
-        "launchd")
-            echo "Enter interval in hours (1, 2, 6, 24):"
-            read -r hours
-            # Convert hours to cron-like format for our internal handling
-            case "$hours" in
-                "1") schedule="0 * * * *" ;;
-                "2") schedule="0 */2 * * *" ;;
-                "6") schedule="0 */6 * * *" ;;
-                "24") schedule="0 0 * * *" ;;
-                *) 
-                    echo "Invalid interval. Using hourly."
-                    schedule="0 * * * *"
-                    ;;
-            esac
-            ;;
-        *)
-            echo "Enter new cron schedule (e.g., '0 * * * *' for hourly):"
-            read -r schedule
-            ;;
-    esac
+    # Validate input is a number
+    if ! [[ "$minutes" =~ ^[0-9]+$ ]]; then
+        echo -e "${RED}Invalid input. Please enter a number.${NC}"
+        echo "Using default of 60 minutes (hourly)."
+        minutes=60
+    fi
     
+    # Convert minutes to appropriate schedule format
+    schedule=$(minutes_to_schedule $minutes)
+    
+    # Set up the job with the new schedule
     setup_cron "$schedule"
     
-    echo -e "${GREEN}Photoframe rescheduled!${NC}"
+    # Update .env file if it exists
+    if [ -f "$APP_DIR/.env" ]; then
+        if grep -q "^FETCH_INTERVAL=" "$APP_DIR/.env"; then
+            # Replace existing FETCH_INTERVAL
+            sed -i.bak "s/^FETCH_INTERVAL=.*/FETCH_INTERVAL=$minutes/" "$APP_DIR/.env"
+            rm -f "$APP_DIR/.env.bak" 2>/dev/null || true
+        else
+            # Add FETCH_INTERVAL if it doesn't exist
+            echo "FETCH_INTERVAL=$minutes" >> "$APP_DIR/.env"
+        fi
+    else
+        # Create .env file if it doesn't exist
+        echo "FETCH_INTERVAL=$minutes" > "$APP_DIR/.env"
+    fi
+    
+    echo -e "${GREEN}Photoframe rescheduled to run every $minutes minutes!${NC}"
 }
 
 # Detect the system's scheduler
@@ -238,30 +324,8 @@ setup_systemd_timer() {
     # Create systemd user directory if it doesn't exist
     mkdir -p "$HOME/.config/systemd/user"
     
-    # Convert cron schedule to systemd timer format
-    # This is a simplified conversion and may not handle all cron formats
-    local minute=$(echo "$schedule" | awk '{print $1}')
-    local hour=$(echo "$schedule" | awk '{print $2}')
-    local day=$(echo "$schedule" | awk '{print $3}')
-    local month=$(echo "$schedule" | awk '{print $4}')
-    local weekday=$(echo "$schedule" | awk '{print $5}')
-    
-    local systemd_schedule=""
-    
-    # Handle common cases
-    if [ "$minute" = "0" ] && [ "$hour" = "*" ]; then
-        systemd_schedule="hourly"
-    elif [ "$minute" = "0" ] && [ "$hour" = "0" ]; then
-        systemd_schedule="daily"
-    elif [ "$minute" = "0" ] && [ "$hour" = "0" ] && [ "$weekday" = "0" ]; then
-        systemd_schedule="weekly"
-    elif [ "$minute" = "0" ] && [ "$hour" = "0" ] && [ "$day" = "1" ]; then
-        systemd_schedule="monthly"
-    else
-        # Default to hourly if conversion is complex
-        systemd_schedule="hourly"
-        echo -e "${YELLOW}Complex cron schedule detected. Defaulting to hourly.${NC}"
-    fi
+    # For systemd, the schedule could be a predefined value or a custom interval
+    local systemd_schedule="$schedule"
     
     # Create service file
     cat > "$service_file" << EOF
@@ -287,7 +351,20 @@ Requires=photoframe.service
 
 [Timer]
 Unit=photoframe.service
-OnCalendar=$systemd_schedule
+EOF
+
+    # Add the appropriate timer setting based on format
+    if [[ "$systemd_schedule" =~ ^[0-9]+m$ ]]; then
+        # It's a custom interval in minutes
+        echo "OnUnitActiveSec=${systemd_schedule}" >> "$timer_file"
+        echo "OnBootSec=${systemd_schedule}" >> "$timer_file"
+    else
+        # It's a calendar-based schedule
+        echo "OnCalendar=${systemd_schedule}" >> "$timer_file"
+    fi
+
+    # Add the install section
+    cat >> "$timer_file" << EOF
 
 [Install]
 WantedBy=timers.target
@@ -309,21 +386,13 @@ setup_launchd_job() {
     # Create LaunchAgents directory if it doesn't exist
     mkdir -p "$HOME/Library/LaunchAgents"
     
-    # Convert cron schedule to launchd interval
-    # This is a simplified conversion and may not handle all cron formats
-    local interval=3600  # Default to hourly (3600 seconds)
+    # For launchd, the schedule is already in seconds
+    local interval="$schedule"
     
-    # Handle common cases based on the cron schedule
-    if [ "$schedule" = "0 * * * *" ]; then
-        interval=3600  # Hourly
-    elif [ "$schedule" = "0 */2 * * *" ]; then
-        interval=7200  # Every 2 hours
-    elif [ "$schedule" = "0 */6 * * *" ]; then
-        interval=21600  # Every 6 hours
-    elif [ "$schedule" = "0 0 * * *" ]; then
-        interval=86400  # Daily
-    else
-        echo -e "${YELLOW}Complex cron schedule detected. Defaulting to hourly.${NC}"
+    # Default to hourly if conversion failed
+    if ! [[ "$interval" =~ ^[0-9]+$ ]]; then
+        interval=3600  # Default to hourly (3600 seconds)
+        echo -e "${YELLOW}Invalid interval format. Defaulting to hourly (3600 seconds).${NC}"
     fi
     
     # Create plist file
