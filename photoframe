@@ -115,7 +115,7 @@ install() {
     
     # Install dependencies using uv
     echo "Installing dependencies with uv..."
-    $UV_CMD pip install --venv "$VENV_DIR" -r "$APP_DIR/requirements.txt"
+    $UV_CMD pip install --python "$VENV_DIR/bin/python" -r "$APP_DIR/requirements.txt"
     
     # Get FETCH_INTERVAL from .env or default to hourly
     if [ -f "$APP_DIR/.env" ]; then
