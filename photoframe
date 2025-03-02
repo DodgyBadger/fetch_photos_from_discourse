@@ -1,0 +1,136 @@
+#!/bin/bash
+
+# Photoframe management script
+# Commands: install, reschedule, stop, uninstall
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="$SCRIPT_DIR"
+VENV_DIR="$APP_DIR/venv"
+CRON_FILE="/tmp/photoframe_cron"
+
+# Colors for output
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[0;33m'
+NC='\033[0m' # No Color
+
+# Print usage information
+usage() {
+    echo "Usage: $0 [command]"
+    echo
+    echo "Commands:"
+    echo "  install     Install dependencies and set up cron job"
+    echo "  reschedule  Change the schedule of the cron job"
+    echo "  stop        Stop the running photoframe process"
+    echo "  uninstall   Remove cron job and virtual environment"
+    echo
+    exit 1
+}
+
+# Install command - sets up virtual environment and cron job
+install() {
+    echo -e "${GREEN}Installing photoframe...${NC}"
+    
+    # Create virtual environment if it doesn't exist
+    if [ ! -d "$VENV_DIR" ]; then
+        echo "Creating virtual environment..."
+        python3 -m venv "$VENV_DIR"
+    fi
+    
+    # Install dependencies
+    echo "Installing dependencies..."
+    "$VENV_DIR/bin/pip" install -r "$APP_DIR/requirements.txt"
+    
+    # Set up initial cron job (default: every hour)
+    setup_cron "0 * * * *"
+    
+    echo -e "${GREEN}Installation complete!${NC}"
+    echo "Photoframe will run every hour. Use '$0 reschedule' to change the schedule."
+}
+
+# Reschedule command - changes the cron job schedule
+reschedule() {
+    echo -e "${YELLOW}Rescheduling photoframe...${NC}"
+    
+    echo "Enter new cron schedule (e.g., '0 * * * *' for hourly):"
+    read -r schedule
+    
+    setup_cron "$schedule"
+    
+    echo -e "${GREEN}Photoframe rescheduled!${NC}"
+}
+
+# Helper function to set up cron job
+setup_cron() {
+    local schedule="$1"
+    
+    # Remove existing cron job if any
+    crontab -l 2>/dev/null | grep -v "$APP_DIR/src/photoframe.py" > "$CRON_FILE" || true
+    
+    # Add new cron job
+    echo "$schedule $VENV_DIR/bin/python $APP_DIR/src/photoframe.py" >> "$CRON_FILE"
+    
+    # Install new crontab
+    crontab "$CRON_FILE"
+    rm "$CRON_FILE"
+    
+    echo "Cron job set with schedule: $schedule"
+}
+
+# Stop command - kills running photoframe processes
+stop() {
+    echo -e "${YELLOW}Stopping photoframe processes...${NC}"
+    
+    if pgrep -f "python.*photoframe.py" > /dev/null; then
+        pkill -f "python.*photoframe.py"
+        echo -e "${GREEN}Photoframe processes stopped.${NC}"
+    else
+        echo -e "${YELLOW}No photoframe processes found running.${NC}"
+    fi
+}
+
+# Uninstall command - removes cron job and virtual environment
+uninstall() {
+    echo -e "${YELLOW}Uninstalling photoframe...${NC}"
+    
+    # Remove cron job
+    crontab -l 2>/dev/null | grep -v "$APP_DIR/src/photoframe.py" > "$CRON_FILE" || true
+    crontab "$CRON_FILE"
+    rm "$CRON_FILE"
+    
+    # Ask before removing virtual environment
+    echo -n "Remove virtual environment? [y/N] "
+    read -r response
+    if [[ "$response" =~ ^[Yy]$ ]]; then
+        echo "Removing virtual environment..."
+        rm -rf "$VENV_DIR"
+    fi
+    
+    echo -e "${GREEN}Photoframe uninstalled.${NC}"
+}
+
+# Main script logic
+if [ $# -eq 0 ]; then
+    usage
+fi
+
+case "$1" in
+    install)
+        install
+        ;;
+    reschedule)
+        reschedule
+        ;;
+    stop)
+        stop
+        ;;
+    uninstall)
+        uninstall
+        ;;
+    *)
+        echo -e "${RED}Unknown command: $1${NC}"
+        usage
+        ;;
+esac
