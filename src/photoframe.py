@@ -22,10 +22,10 @@ api_key = os.getenv('DISCOURSE_API_KEY')
 api_username = os.getenv('DISCOURSE_API_USERNAME')
 base_url = os.getenv('DISCOURSE_BASE_URL')
 tag_name = os.getenv('DISCOURSE_TAG')
-discourse_admin = os.getenv('DISCOURSE_NOTIFICATION_USER')
+# discourse_admin = os.getenv('DISCOURSE_NOTIFICATION_USER')
 batch_size = int(os.getenv('BATCH_SIZE', '20'))
 image_limit = int(os.getenv('IMAGE_LIMIT'))
-image_dir = os.getenv('IMAGE_DIR')
+image_dir = os.getenv('IMAGE_DIR','data/images')
 
 headers = {
     'Api-Key': api_key,
