@@ -1,5 +1,6 @@
 import logging
 import os
+import requests
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -42,7 +43,7 @@ def setup_logging():
     root_logger.addHandler(console_handler)
 
 
-def notify_admin_of_failure(error_message: str, baseURL, recipient):
+def notify_admin_of_failure(error_message: str, baseURL, recipient, api_headers=None):
     """Send a private message to admin via Discourse API"""
    
     try:
@@ -53,6 +54,10 @@ def notify_admin_of_failure(error_message: str, baseURL, recipient):
             'target_recipients': recipient,
             'archetype': 'private_message'
         }
+        
+        # Use provided headers or empty dict if none provided
+        headers = api_headers or {}
+        
         response = requests.post(url, headers=headers, json=data)
         response.raise_for_status()
         logger.info("Successfully sent error notification to admin")
