@@ -60,27 +60,62 @@ install() {
             
             # Add uv to PATH for this session if it's not already there
             if ! command -v uv &> /dev/null; then
-                export PATH="$HOME/.cargo/bin:$PATH"
+                # Try different possible installation paths
+                if [ -d "$HOME/.local/bin" ]; then
+                    export PATH="$HOME/.local/bin:$PATH"
+                fi
+                if [ -d "$HOME/.cargo/bin" ]; then
+                    export PATH="$HOME/.cargo/bin:$PATH"
+                fi
+                
+                # Source the environment file if it exists
+                if [ -f "$HOME/.local/bin/env" ]; then
+                    source "$HOME/.local/bin/env"
+                fi
             fi
         fi
     fi
     
     # Verify uv is now available
     if ! command -v uv &> /dev/null; then
-        echo -e "${RED}Failed to install uv. Please install it manually:${NC}"
-        echo "https://github.com/astral-sh/uv"
-        exit 1
+        echo -e "${YELLOW}uv not found in PATH. Trying to locate it...${NC}"
+        
+        # Check common installation locations
+        UV_PATHS=(
+            "$HOME/.local/bin/uv"
+            "$HOME/.cargo/bin/uv"
+        )
+        
+        UV_FOUND=false
+        for UV_PATH in "${UV_PATHS[@]}"; do
+            if [ -x "$UV_PATH" ]; then
+                echo "Found uv at $UV_PATH"
+                UV_FOUND=true
+                # Use the full path to uv for the rest of the script
+                UV_CMD="$UV_PATH"
+                break
+            fi
+        done
+        
+        if [ "$UV_FOUND" = false ]; then
+            echo -e "${RED}Failed to install uv. Please install it manually:${NC}"
+            echo "https://github.com/astral-sh/uv"
+            echo "After installing, add it to your PATH and run this script again."
+            exit 1
+        fi
+    else
+        UV_CMD="uv"
     fi
     
     # Create virtual environment if it doesn't exist
     if [ ! -d "$VENV_DIR" ]; then
         echo "Creating virtual environment using uv..."
-        uv venv "$VENV_DIR"
+        $UV_CMD venv "$VENV_DIR"
     fi
     
     # Install dependencies using uv
     echo "Installing dependencies with uv..."
-    uv pip install -r "$APP_DIR/requirements.txt"
+    $UV_CMD pip install -r "$APP_DIR/requirements.txt"
     
     # Get FETCH_INTERVAL from .env or default to hourly
     if [ -f "$APP_DIR/.env" ]; then
