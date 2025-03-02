@@ -33,17 +33,43 @@ usage() {
 install() {
     echo -e "${GREEN}Installing photoframe...${NC}"
     
-    # Check if Homebrew is installed
-    if ! command -v brew &> /dev/null; then
-        echo -e "${RED}Homebrew is not installed. Please install Homebrew first:${NC}"
-        echo "https://brew.sh/"
+    # Detect package manager (apt or homebrew)
+    if command -v apt-get &> /dev/null; then
+        PKG_MANAGER="apt"
+    elif command -v brew &> /dev/null; then
+        PKG_MANAGER="brew"
+    else
+        echo -e "${RED}Neither apt nor Homebrew found. Please install one of them:${NC}"
+        echo "For Homebrew: https://brew.sh/"
+        echo "For apt: This should be available on Debian/Ubuntu systems"
         exit 1
     fi
     
     # Check if uv is installed, install if not
     if ! command -v uv &> /dev/null; then
-        echo "Installing uv using Homebrew..."
-        brew install astral-sh/tap/uv
+        echo "Installing uv..."
+        if [ "$PKG_MANAGER" = "brew" ]; then
+            brew install astral-sh/tap/uv
+        elif [ "$PKG_MANAGER" = "apt" ]; then
+            echo "Installing uv dependencies..."
+            sudo apt-get update
+            sudo apt-get install -y curl build-essential
+            
+            echo "Installing uv from binary release..."
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            
+            # Add uv to PATH for this session if it's not already there
+            if ! command -v uv &> /dev/null; then
+                export PATH="$HOME/.cargo/bin:$PATH"
+            fi
+        fi
+    fi
+    
+    # Verify uv is now available
+    if ! command -v uv &> /dev/null; then
+        echo -e "${RED}Failed to install uv. Please install it manually:${NC}"
+        echo "https://github.com/astral-sh/uv"
+        exit 1
     fi
     
     # Create virtual environment if it doesn't exist
