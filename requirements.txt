@@ -3,3 +3,4 @@ beautifulsoup4
 pydantic
 python-dotenv
 requests
+croniter

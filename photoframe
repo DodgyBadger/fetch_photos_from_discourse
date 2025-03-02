@@ -136,20 +136,84 @@ install() {
     echo "Use '$0 reschedule' to change the schedule."
 }
 
-# Reschedule command - changes the cron job schedule
+# Reschedule command - changes the job schedule
 reschedule() {
     echo -e "${YELLOW}Rescheduling photoframe...${NC}"
     
-    echo "Enter new cron schedule (e.g., '0 * * * *' for hourly):"
-    read -r schedule
+    local scheduler=$(detect_scheduler)
+    
+    case "$scheduler" in
+        "cron")
+            echo "Enter new cron schedule (e.g., '0 * * * *' for hourly):"
+            read -r schedule
+            ;;
+        "systemd")
+            echo "Enter schedule (hourly, daily, weekly, monthly, or cron format '0 * * * *'):"
+            read -r schedule
+            ;;
+        "launchd")
+            echo "Enter interval in hours (1, 2, 6, 24):"
+            read -r hours
+            # Convert hours to cron-like format for our internal handling
+            case "$hours" in
+                "1") schedule="0 * * * *" ;;
+                "2") schedule="0 */2 * * *" ;;
+                "6") schedule="0 */6 * * *" ;;
+                "24") schedule="0 0 * * *" ;;
+                *) 
+                    echo "Invalid interval. Using hourly."
+                    schedule="0 * * * *"
+                    ;;
+            esac
+            ;;
+        *)
+            echo "Enter new cron schedule (e.g., '0 * * * *' for hourly):"
+            read -r schedule
+            ;;
+    esac
     
     setup_cron "$schedule"
     
     echo -e "${GREEN}Photoframe rescheduled!${NC}"
 }
 
-# Helper function to set up cron job
+# Detect the system's scheduler
+detect_scheduler() {
+    if [ "$(uname)" = "Darwin" ]; then
+        echo "launchd"
+    elif command -v systemctl &> /dev/null && systemctl --version | grep -q "systemd"; then
+        echo "systemd"
+    elif command -v crontab &> /dev/null; then
+        echo "cron"
+    else
+        echo "unknown"
+    fi
+}
+
+# Helper function to set up scheduled job
 setup_cron() {
+    local schedule="$1"
+    local scheduler=$(detect_scheduler)
+    
+    case "$scheduler" in
+        "cron")
+            setup_cron_job "$schedule"
+            ;;
+        "systemd")
+            setup_systemd_timer "$schedule"
+            ;;
+        "launchd")
+            setup_launchd_job "$schedule"
+            ;;
+        *)
+            echo -e "${YELLOW}Unknown scheduler system. Falling back to cron...${NC}"
+            setup_cron_job "$schedule"
+            ;;
+    esac
+}
+
+# Set up traditional cron job
+setup_cron_job() {
     local schedule="$1"
     
     # Remove existing cron job if any
@@ -165,6 +229,133 @@ setup_cron() {
     echo "Cron job set with schedule: $schedule"
 }
 
+# Set up systemd timer
+setup_systemd_timer() {
+    local schedule="$1"
+    local service_file="$HOME/.config/systemd/user/photoframe.service"
+    local timer_file="$HOME/.config/systemd/user/photoframe.timer"
+    
+    # Create systemd user directory if it doesn't exist
+    mkdir -p "$HOME/.config/systemd/user"
+    
+    # Convert cron schedule to systemd timer format
+    # This is a simplified conversion and may not handle all cron formats
+    local minute=$(echo "$schedule" | awk '{print $1}')
+    local hour=$(echo "$schedule" | awk '{print $2}')
+    local day=$(echo "$schedule" | awk '{print $3}')
+    local month=$(echo "$schedule" | awk '{print $4}')
+    local weekday=$(echo "$schedule" | awk '{print $5}')
+    
+    local systemd_schedule=""
+    
+    # Handle common cases
+    if [ "$minute" = "0" ] && [ "$hour" = "*" ]; then
+        systemd_schedule="hourly"
+    elif [ "$minute" = "0" ] && [ "$hour" = "0" ]; then
+        systemd_schedule="daily"
+    elif [ "$minute" = "0" ] && [ "$hour" = "0" ] && [ "$weekday" = "0" ]; then
+        systemd_schedule="weekly"
+    elif [ "$minute" = "0" ] && [ "$hour" = "0" ] && [ "$day" = "1" ]; then
+        systemd_schedule="monthly"
+    else
+        # Default to hourly if conversion is complex
+        systemd_schedule="hourly"
+        echo -e "${YELLOW}Complex cron schedule detected. Defaulting to hourly.${NC}"
+    fi
+    
+    # Create service file
+    cat > "$service_file" << EOF
+[Unit]
+Description=Photoframe Service
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=$APP_DIR
+ExecStart=$VENV_DIR/bin/python $APP_DIR/src/photoframe.py
+Environment="PATH=$PATH"
+
+[Install]
+WantedBy=default.target
+EOF
+
+    # Create timer file
+    cat > "$timer_file" << EOF
+[Unit]
+Description=Run Photoframe on schedule
+Requires=photoframe.service
+
+[Timer]
+Unit=photoframe.service
+OnCalendar=$systemd_schedule
+
+[Install]
+WantedBy=timers.target
+EOF
+
+    # Enable and start the timer
+    systemctl --user daemon-reload
+    systemctl --user enable photoframe.timer
+    systemctl --user start photoframe.timer
+    
+    echo "Systemd timer set with schedule: $systemd_schedule"
+}
+
+# Set up launchd job (macOS)
+setup_launchd_job() {
+    local schedule="$1"
+    local plist_file="$HOME/Library/LaunchAgents/com.user.photoframe.plist"
+    
+    # Create LaunchAgents directory if it doesn't exist
+    mkdir -p "$HOME/Library/LaunchAgents"
+    
+    # Convert cron schedule to launchd interval
+    # This is a simplified conversion and may not handle all cron formats
+    local interval=3600  # Default to hourly (3600 seconds)
+    
+    # Handle common cases based on the cron schedule
+    if [ "$schedule" = "0 * * * *" ]; then
+        interval=3600  # Hourly
+    elif [ "$schedule" = "0 */2 * * *" ]; then
+        interval=7200  # Every 2 hours
+    elif [ "$schedule" = "0 */6 * * *" ]; then
+        interval=21600  # Every 6 hours
+    elif [ "$schedule" = "0 0 * * *" ]; then
+        interval=86400  # Daily
+    else
+        echo -e "${YELLOW}Complex cron schedule detected. Defaulting to hourly.${NC}"
+    fi
+    
+    # Create plist file
+    cat > "$plist_file" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.user.photoframe</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$VENV_DIR/bin/python</string>
+        <string>$APP_DIR/src/photoframe.py</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>$APP_DIR</string>
+    <key>StartInterval</key>
+    <integer>$interval</integer>
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>
+EOF
+
+    # Load the plist
+    launchctl unload "$plist_file" 2>/dev/null || true
+    launchctl load -w "$plist_file"
+    
+    echo "Launchd job set with interval: $interval seconds"
+}
+
 # Stop command - kills running photoframe processes
 stop() {
     echo -e "${YELLOW}Stopping photoframe processes...${NC}"
@@ -177,14 +368,47 @@ stop() {
     fi
 }
 
-# Uninstall command - removes cron job and virtual environment
+# Uninstall command - removes scheduled job and virtual environment
 uninstall() {
     echo -e "${YELLOW}Uninstalling photoframe...${NC}"
     
-    # Remove cron job
-    crontab -l 2>/dev/null | grep -v "$APP_DIR/src/photoframe.py" > "$CRON_FILE" || true
-    crontab "$CRON_FILE"
-    rm "$CRON_FILE"
+    local scheduler=$(detect_scheduler)
+    
+    # Remove scheduled job based on scheduler type
+    case "$scheduler" in
+        "cron")
+            # Remove cron job
+            crontab -l 2>/dev/null | grep -v "$APP_DIR/src/photoframe.py" > "$CRON_FILE" || true
+            crontab "$CRON_FILE"
+            rm -f "$CRON_FILE"
+            echo "Removed cron job."
+            ;;
+        "systemd")
+            # Remove systemd timer and service
+            systemctl --user stop photoframe.timer 2>/dev/null || true
+            systemctl --user disable photoframe.timer 2>/dev/null || true
+            systemctl --user stop photoframe.service 2>/dev/null || true
+            systemctl --user disable photoframe.service 2>/dev/null || true
+            
+            rm -f "$HOME/.config/systemd/user/photoframe.timer"
+            rm -f "$HOME/.config/systemd/user/photoframe.service"
+            systemctl --user daemon-reload
+            echo "Removed systemd timer and service."
+            ;;
+        "launchd")
+            # Remove launchd job
+            local plist_file="$HOME/Library/LaunchAgents/com.user.photoframe.plist"
+            launchctl unload "$plist_file" 2>/dev/null || true
+            rm -f "$plist_file"
+            echo "Removed launchd job."
+            ;;
+        *)
+            echo "Unknown scheduler. Attempting to remove cron job..."
+            crontab -l 2>/dev/null | grep -v "$APP_DIR/src/photoframe.py" > "$CRON_FILE" || true
+            crontab "$CRON_FILE"
+            rm -f "$CRON_FILE"
+            ;;
+    esac
     
     # Ask before removing virtual environment
     echo -n "Remove virtual environment? [y/N] "
