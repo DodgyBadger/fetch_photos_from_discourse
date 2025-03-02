@@ -2,6 +2,23 @@
 
 A Python application that fetches and manages images from Discourse for a digital photo frame display.
 
+## Prerequisites
+
+- **Python 3.8+** - Required to run the application
+- **Package Manager** - One of the following:
+  - **apt** - For Debian/Ubuntu-based systems
+  - **Homebrew** - For macOS or Linux systems with Homebrew installed
+- **Scheduler** - The script will automatically use one of:
+  - **cron** - Traditional Unix/Linux scheduler
+  - **systemd** - Modern Linux systems (Ubuntu 16.04+, Fedora, CentOS 7+, etc.)
+  - **launchd** - macOS scheduler
+
+### Compatible Operating Systems
+
+- **Linux** - Debian/Ubuntu, Fedora, CentOS, Arch Linux, etc.
+- **macOS** - 10.15 (Catalina) or newer
+- **Raspberry Pi OS** - Bullseye or newer
+
 ## Installation
 
 ```bash
