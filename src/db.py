@@ -8,13 +8,22 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Set the DB location
-BASE_DIR = Path(__file__).parent.parent  # Go up one level to the app root
-data_dir = BASE_DIR / 'data'
-db_path = data_dir / 'photoframe.db'
-
 # Import needed for remove_oldest_images function
 import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Set the DB location
+BASE_DIR = Path(__file__).parent.parent  # Go up one level to the app root
+data_dir = os.getenv('IMAGES_DIR', 'data/images').rstrip('/images')
+if not os.path.isabs(data_dir):
+    data_dir = BASE_DIR / data_dir
+else:
+    data_dir = Path(data_dir)
+
+db_path = data_dir / 'photoframe.db'
 
 def init_db():
     """Initialize the SQLite database with our schema"""
@@ -104,10 +113,15 @@ def remove_oldest_images(count: int):
         
         logger.info("Removing %d oldest images", count)
         
+        # Get image directory from environment or use default
+        image_dir = os.getenv('IMAGES_DIR', 'data/images')
+        if not os.path.isabs(image_dir):
+            image_dir = os.path.join(BASE_DIR, image_dir)
+        
         # Delete files from filesystem
         for (filename,) in files_to_delete:
             try:
-                file_path = os.path.join(os.getenv('IMAGE_DIR'), filename)
+                file_path = os.path.join(image_dir, filename)
                 os.remove(file_path)
                 logger.debug("Removed file: %s", file_path)
             except OSError as e:

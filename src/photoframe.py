@@ -25,7 +25,12 @@ tag_name = os.getenv('DISCOURSE_TAG')
 # discourse_admin = os.getenv('DISCOURSE_NOTIFICATION_USER')
 batch_size = int(os.getenv('BATCH_SIZE', '20'))
 image_limit = int(os.getenv('IMAGE_LIMIT'))
-image_dir = os.getenv('IMAGES_DIR','data/images')
+
+# Get image directory from environment or use default
+image_dir = os.getenv('IMAGES_DIR', 'data/images')
+# Make sure we have the full path if it's relative
+if not os.path.isabs(image_dir):
+    image_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), image_dir)
 
 headers = {
     'Api-Key': api_key,
@@ -238,14 +243,20 @@ def main():
             logger.error("No .env file found. Please create one by copying .env-example and filling in your configuration values.")
             sys.exit(1)
         
-        # Ensure database is properly initialized before any operations
-        db.init_db()
-        logger.info("Database initialized")
-        
         # Ensure image directory exists
         if not os.path.exists(image_dir):
             logger.info(f"Creating image directory: {image_dir}")
             os.makedirs(image_dir, exist_ok=True)
+            
+        # Get parent directory for database
+        db_dir = os.path.dirname(image_dir) if image_dir.endswith('/images') else image_dir
+        if not os.path.exists(db_dir):
+            logger.info(f"Creating database directory: {db_dir}")
+            os.makedirs(db_dir, exist_ok=True)
+        
+        # Ensure database is properly initialized before any operations
+        db.init_db()
+        logger.info("Database initialized")
         
         tagged_topics = get_tagged_topics(base_url, tag_name)
         if not tagged_topics:
