@@ -229,6 +229,11 @@ def main():
     try:
         logger.info("Starting photo frame image fetch")
         
+        # Check if .env file exists
+        if not os.path.exists('.env'):
+            logger.error("No .env file found. Please create one by copying .env-example and filling in your configuration values.")
+            sys.exit(1)
+        
         # Ensure database is properly initialized before any operations
         db.init_db()
         logger.info("Database initialized")

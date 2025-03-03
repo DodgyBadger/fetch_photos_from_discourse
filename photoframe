@@ -34,6 +34,20 @@ usage() {
 install() {
     echo -e "${GREEN}Installing photoframe...${NC}"
     
+    # Check if .env file exists, create from example if not
+    if [ ! -f "$APP_DIR/.env" ]; then
+        if [ -f "$APP_DIR/.env-example" ]; then
+            echo -e "${YELLOW}No .env file found. Creating from .env-example...${NC}"
+            cp "$APP_DIR/.env-example" "$APP_DIR/.env"
+            echo -e "${YELLOW}Please edit $APP_DIR/.env with your configuration values.${NC}"
+            echo -e "${YELLOW}You can run the install command again after editing the .env file.${NC}"
+            exit 1
+        else
+            echo -e "${RED}No .env or .env-example file found. Cannot continue.${NC}"
+            exit 1
+        fi
+    fi
+    
     # Detect package manager (apt or homebrew)
     if command -v apt &> /dev/null; then
         PKG_MANAGER="apt"
@@ -483,6 +497,12 @@ uninstall() {
 run() {
     echo -e "${GREEN}Running photoframe script...${NC}"
     
+    # Check if .env file exists
+    if [ ! -f "$APP_DIR/.env" ]; then
+        echo -e "${RED}No .env file found. Please run '$0 install' first.${NC}"
+        exit 1
+    fi
+    
     # Set PYTHONPATH to include the app directory
     PYTHONPATH=$APP_DIR $VENV_DIR/bin/python $APP_DIR/src/photoframe.py
     
@@ -497,6 +517,12 @@ status() {
     # Check if photoframe is installed
     if [ ! -d "$VENV_DIR" ]; then
         echo -e "${YELLOW}Photoframe is not installed. Run '$0 install' first.${NC}"
+        return
+    fi
+    
+    # Check if .env file exists
+    if [ ! -f "$APP_DIR/.env" ]; then
+        echo -e "${YELLOW}No .env file found. Run '$0 install' to create it.${NC}"
         return
     fi
     
