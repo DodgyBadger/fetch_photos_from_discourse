@@ -163,7 +163,6 @@ def download_images(images: List[dict]):
         SystemError: If too many consecutive downloads fail
         requests.exceptions.RequestException: For network/API errors
         IOError: For file system errors
-        sqlite3.Error: For database errors
     """
     failed_downloads = []
     consecutive_failures = 0
@@ -200,15 +199,20 @@ def download_images(images: List[dict]):
                 f.write(response.content)
             
             # Update database
-            db.add_image(
-                hash=img['hash'],
-                filename=filename,
-                url=img['url'],
-                downloaded_at=datetime.now(timezone.utc)
-            )
-            
-            logger.info("Successfully downloaded: %s", filename)
-            consecutive_failures = 0  # Reset on success
+            try:
+                db.add_image(
+                    hash=img['hash'],
+                    filename=filename,
+                    url=img['url'],
+                    downloaded_at=datetime.now(timezone.utc)
+                )
+                logger.info("Successfully downloaded: %s", filename)
+                consecutive_failures = 0  # Reset on success
+            except Exception as db_error:
+                logger.error("Database error for image %s: %s", img['hash'], str(db_error))
+                # If file was downloaded but DB insert failed, consider it a partial failure
+                failed_downloads.append(img)
+                # Don't count DB errors toward consecutive download failures
         
         except (requests.exceptions.RequestException, IOError) as e:
             logger.error("Error downloading %s: %s", img['url'], str(e))
@@ -252,8 +256,13 @@ def main():
         if not image_list:
             logger.info("No new images found in topics")
             return
-            
-        download_images(image_list)
+        
+        try:    
+            download_images(image_list)
+        except SystemError as e:
+            logger.critical("Download system error: %s", e)
+            # Continue to update last fetch time even if some downloads failed
+        
         db.update_last_successful_fetch(datetime.now(timezone.utc))
         logger.info("Successfully completed photo frame image fetch")
         
